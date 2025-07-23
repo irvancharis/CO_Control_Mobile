@@ -22,6 +22,9 @@ class AuthService {
       await prefs.setBool('isLoggedIn', true);
       return true;
     }
+    print('Login HTTP status: ${response.statusCode}');
+    print('Login response body: ${response.body}');
+
     return false;
   }
 
