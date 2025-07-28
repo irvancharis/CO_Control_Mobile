@@ -1,119 +1,104 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import '../services/auth_service.dart';
-import 'join_call_screen.dart';
-import 'control_call_screen.dart';
+import '../models/feature_model.dart';
+import '../services/feature_service.dart';
+import 'detail_feature_screen.dart'; // Pastikan file ini dibuat
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({Key? key}) : super(key: key);
 
   @override
-  _DashboardScreenState createState() => _DashboardScreenState();
+  State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  late Future<String?> _usernameFuture;
+  late Future<List<FeatureItem>> _futureFeatures;
 
   @override
   void initState() {
     super.initState();
-    _usernameFuture = _loadUsername();
+    _futureFeatures = FeatureService().fetchFeatures();
   }
 
-  Future<String?> _loadUsername() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString('username') ?? 'User';
+  IconData getIconData(String iconName) {
+    switch (iconName) {
+      case 'dashboard':
+        return Icons.dashboard;
+      case 'visit':
+        return Icons.location_on;
+      case 'call':
+        return Icons.call;
+      case 'report':
+        return Icons.insert_chart;
+      default:
+        return Icons.extension;
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Dashboard'),
-        centerTitle: true,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () async {
-              await AuthService().logout();
-              Navigator.of(context).pushReplacementNamed('/');
-            },
-          )
-        ],
-      ),
-      body: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.start,
-                children: [
-                  _buildActionButton(
-                    context,
-                    label: 'JOIN CALL',
-                    icon: Icons.video_call,
-                    color: theme.primaryColor,
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const JoinCallScreen()),
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  _buildActionButton(
-                    context,
-                    label: 'CONTROL CALL',
-                    icon: Icons.control_camera,
-                    color: Colors.green.shade600,
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                          builder: (_) => const ControlCallScreen()),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+      appBar: AppBar(title: const Text("Dashboard")),
+      body: FutureBuilder<List<FeatureItem>>(
+        future: _futureFeatures,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          } else if (snapshot.hasError) {
+            return Center(child: Text("Error: ${snapshot.error}"));
+          } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
+            return const Center(child: Text("Tidak ada menu fitur"));
+          }
 
-  Widget _buildActionButton(
-    BuildContext context, {
-    required String label,
-    required IconData icon,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
-    return Material(
-      color: color,
-      borderRadius: BorderRadius.circular(16),
-      elevation: 8,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: onTap,
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(vertical: 20),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, size: 30, color: Colors.white),
-              const SizedBox(width: 12),
-              Text(
-                label,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 1.2,
+          final features = snapshot.data!;
+          return GridView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: features.length,
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 12,
+              childAspectRatio: 3 / 2,
+            ),
+            itemBuilder: (context, index) {
+              final feature = features[index];
+              return GestureDetector(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => DetailFeatureScreen(
+                        featureId: feature.id, // sekarang berupa String (UUID)
+                        title: feature.nama,
+                      ),
+                    ),
+                  );
+                },
+                child: Card(
+                  elevation: 4,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(getIconData(feature.icon), size: 40),
+                        const SizedBox(height: 10),
+                        Text(
+                          feature.nama,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
-              ),
-            ],
-          ),
-        ),
+              );
+            },
+          );
+        },
       ),
     );
   }
