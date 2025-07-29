@@ -31,7 +31,11 @@ class ControlSalesApp extends StatelessWidget {
     return MaterialApp(
       title: 'Control Sales App',
       theme: ThemeData(primarySwatch: Colors.blue),
-      home: isLoggedIn ? const DashboardScreen() : const LoginScreen(),
+      initialRoute: isLoggedIn ? '/dashboard' : '/login',
+      routes: {
+        '/login': (context) => const LoginScreen(),
+        '/dashboard': (context) => const DashboardScreen(),
+      },
     );
   }
 }

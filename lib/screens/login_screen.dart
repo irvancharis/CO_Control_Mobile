@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/auth_service.dart';
 import 'dashboard_screen.dart';
 
@@ -59,6 +60,9 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _loading = false);
 
     if (success) {
+      final prefs = await SharedPreferences.getInstance();
+      print("✅ Login sukses. ID SPV: \${prefs.getString('user_id')}");
+
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => const DashboardScreen()),
       );
