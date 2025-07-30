@@ -1,18 +1,28 @@
-import 'dart:convert';
-import 'package:http/http.dart' as http;
 import '../models/feature_detail_model.dart';
-import '../config/server.dart';
 
 class FeatureDetailService {
+  // Ambil data checklist dari database/server (ganti sesuai kebutuhan)
   Future<List<FeatureDetail>> fetchDetails(String featureId) async {
-    final url = Uri.parse('${ServerConfig.baseUrl}/DETAIL_WITH_SUB/$featureId');
-    final response = await http.get(url);
-
-    if (response.statusCode == 200) {
-      List data = jsonDecode(response.body);
-      return data.map((item) => FeatureDetail.fromJson(item)).toList();
-    } else {
-      throw Exception('Gagal memuat detail fitur');
-    }
+    // Simulasi fetch ke API/database:
+    await Future.delayed(const Duration(milliseconds: 500));
+    // TODO: Ganti dengan logic database sesungguhnya!
+    return [
+      FeatureDetail(
+        nama: 'Cek Modem',
+        icon: 'dashboard',
+        subDetails: [
+          SubDetail(nama: 'Lampu ON', isChecked: false),
+          SubDetail(nama: 'Kabel terpasang', isChecked: false),
+        ],
+      ),
+      FeatureDetail(
+        nama: 'Cek Koneksi',
+        icon: 'call',
+        subDetails: [
+          SubDetail(nama: 'Koneksi OK', isChecked: false),
+          SubDetail(nama: 'Tidak ada masalah', isChecked: false),
+        ],
+      ),
+    ];
   }
 }

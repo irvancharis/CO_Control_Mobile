@@ -1,62 +1,24 @@
-class FeatureSubDetail {
-  final String id;
-  final String nama;
-  bool isChecked; // untuk checkbox
+class FeatureDetail {
+  String nama;
+  String icon;
+  List<SubDetail> subDetails;
 
-  FeatureSubDetail({
-    required this.id,
-    required this.nama,
-    this.isChecked = false,
-  });
+  FeatureDetail(
+      {required this.nama, required this.icon, required this.subDetails});
 
-  factory FeatureSubDetail.fromJson(Map<String, dynamic> json) {
-    return FeatureSubDetail(
-      id: json['ID_FEATURESUBDETAIL'].toString(),
-      nama: json['NAME'],
-    );
-  }
-
-  Map<String, dynamic> toJson() => {
-        'id': id,
-        'nama': nama,
-        'isChecked': isChecked,
-      };
+  // Supaya bisa cloning checklist (reset)
+  FeatureDetail copy() => FeatureDetail(
+        nama: this.nama,
+        icon: this.icon,
+        subDetails: this.subDetails.map((sd) => sd.copy()).toList(),
+      );
 }
 
-class FeatureDetail {
-  final String id;
-  final String nama;
-  final String icon;
-  final String route;
-  final List<FeatureSubDetail> subDetails;
+class SubDetail {
+  String nama;
+  bool isChecked;
 
-  FeatureDetail({
-    required this.id,
-    required this.nama,
-    required this.icon,
-    required this.route,
-    required this.subDetails,
-  });
+  SubDetail({required this.nama, required this.isChecked});
 
-  factory FeatureDetail.fromJson(Map<String, dynamic> json) {
-    var subList = json['SUBDETAIL'] as List? ?? [];
-    List<FeatureSubDetail> subDetails =
-        subList.map((e) => FeatureSubDetail.fromJson(e)).toList();
-
-    return FeatureDetail(
-      id: json['ID_FEATUREDETAIL'].toString(),
-      nama: json['NAME'],
-      icon: json['ICON'] ?? 'extension',
-      route: json['ROUTE'] ?? '/',
-      subDetails: subDetails,
-    );
-  }
-
-  Map<String, dynamic> toJson() => {
-        'id': id,
-        'nama': nama,
-        'icon': icon,
-        'route': route,
-        'subDetails': subDetails.map((e) => e.toJson()).toList(),
-      };
+  SubDetail copy() => SubDetail(nama: this.nama, isChecked: this.isChecked);
 }

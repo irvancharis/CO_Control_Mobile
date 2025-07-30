@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/feature_model.dart';
 import '../services/feature_service.dart';
-import 'detail_feature_screen.dart'; // Pastikan file ini dibuat
+import 'pelanggan_list_screen.dart'; // <- PENTING
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({Key? key}) : super(key: key);
@@ -63,11 +63,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
               final feature = features[index];
               return GestureDetector(
                 onTap: () {
+                  // NAVIGASI KE LIST PELANGGAN (BUKAN LANGSUNG KE CHECKLIST)
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => DetailFeatureScreen(
-                        featureId: feature.id, // sekarang berupa String (UUID)
+                      builder: (_) => PelangganListScreen(
+                        featureId: feature.id,
                         title: feature.nama,
                       ),
                     ),

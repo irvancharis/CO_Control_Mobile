@@ -1,9 +1,7 @@
-import 'dart:convert';
-import 'package:http/http.dart' as http;
-import '../config/server.dart';
 import '../models/feature_detail_model.dart';
 
 class SubmitService {
+  // Kembalikan Future<bool> (success/failed)
   static Future<bool> submitVisit({
     required String idVisit,
     required DateTime tanggal,
@@ -16,50 +14,30 @@ class SubmitService {
     required String catatan,
     required String idFeature,
     required List<FeatureDetail> details,
+    String? idSales,
+    String? nocall,
   }) async {
-    final url = Uri.parse('${ServerConfig.baseUrl}/SUBMIT_VISIT');
+    // Simulasi submit ke API/database
+    await Future.delayed(const Duration(seconds: 1));
+    // TODO: Ganti dengan post ke API/server atau simpan ke lokal
 
-    final body = {
-      'id_visit': idVisit,
-      'tanggal': tanggal.toIso8601String(),
-      'idspv': idSpv,
-      'idpelanggan': idPelanggan,
-      'latitude': latitude,
-      'longitude': longitude,
-      'mulai': mulai.toIso8601String(),
-      'selesai': selesai.toIso8601String(),
-      'catatan': catatan,
-      'id_feature': idFeature,
-      'details': details.map((detail) {
-        return {
-          'id': detail.id,
-          'subDetails': detail.subDetails.map((sub) {
-            return {
-              'id': sub.id,
-              'nama': sub.nama,
-              'isChecked': sub.isChecked,
-            };
-          }).toList(),
-        };
-      }).toList(),
-    };
+    // Contoh: tampilkan ke console
+    print('Submit Visit');
+    print('idVisit: $idVisit');
+    print('tanggal: $tanggal');
+    print('idSpv: $idSpv');
+    print('idPelanggan: $idPelanggan');
+    print('latitude: $latitude');
+    print('longitude: $longitude');
+    print('mulai: $mulai');
+    print('selesai: $selesai');
+    print('catatan: $catatan');
+    print('idFeature: $idFeature');
+    print('details: $details');
+    print('idSales: $idSales');
+    print('nocall: $nocall');
 
-    try {
-      final response = await http.post(
-        url,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(body),
-      );
-
-      if (response.statusCode == 200) {
-        return true;
-      } else {
-        print("❌ Error: ${response.body}");
-        return false;
-      }
-    } catch (e) {
-      print("❌ Exception: $e");
-      return false;
-    }
+    // Anggap success
+    return true;
   }
 }
