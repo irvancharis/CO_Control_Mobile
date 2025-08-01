@@ -4,13 +4,13 @@ import '../models/feature_model.dart';
 import '../config/server.dart';
 
 class FeatureService {
-  Future<List<FeatureItem>> fetchFeatures() async {
+  Future<List<Feature>> fetchFeatures() async {
     final url = Uri.parse('${ServerConfig.baseUrl}/FEATURE');
     final response = await http.get(url);
 
     if (response.statusCode == 200) {
       List data = jsonDecode(response.body);
-      return data.map((item) => FeatureItem.fromJson(item)).toList();
+      return data.map((item) => Feature.fromJson(item)).toList();
     } else {
       throw Exception('Gagal memuat fitur: ${response.statusCode}');
     }

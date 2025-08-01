@@ -1,7 +1,9 @@
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import '../models/feature_detail_model.dart';
+import '../config/server.dart';
 
 class SubmitService {
-  // Kembalikan Future<bool> (success/failed)
   static Future<bool> submitVisit({
     required String idVisit,
     required DateTime tanggal,
@@ -17,27 +19,55 @@ class SubmitService {
     String? idSales,
     String? nocall,
   }) async {
-    // Simulasi submit ke API/database
-    await Future.delayed(const Duration(seconds: 1));
-    // TODO: Ganti dengan post ke API/server atau simpan ke lokal
+    try {
+      // Siapkan payload JSON
+      final data = {
+        'id_visit': idVisit,
+        'tanggal': tanggal.toIso8601String(),
+        'id_spv': idSpv,
+        'id_pelanggan': idPelanggan,
+        'latitude': latitude,
+        'longitude': longitude,
+        'mulai': mulai.toIso8601String(),
+        'selesai': selesai.toIso8601String(),
+        'catatan': catatan,
+        'id_feature': idFeature,
+        'id_sales': idSales,
+        'nocall': nocall,
+        'details': details.map((detail) {
+          return {
+            'id_feature_detail': detail.id,
+            'nama_detail': detail.nama,
+            'sub_details': detail.subDetails.map((sub) {
+              return {
+                'id_feature_sub_detail': sub.id,
+                'nama_sub': sub.nama,
+                'is_checked': sub.isChecked,
+              };
+            }).toList(),
+          };
+        }).toList(),
+      };
 
-    // Contoh: tampilkan ke console
-    print('Submit Visit');
-    print('idVisit: $idVisit');
-    print('tanggal: $tanggal');
-    print('idSpv: $idSpv');
-    print('idPelanggan: $idPelanggan');
-    print('latitude: $latitude');
-    print('longitude: $longitude');
-    print('mulai: $mulai');
-    print('selesai: $selesai');
-    print('catatan: $catatan');
-    print('idFeature: $idFeature');
-    print('details: $details');
-    print('idSales: $idSales');
-    print('nocall: $nocall');
+      // Kirim ke server
+      final response = await http.post(
+        Uri.parse('${ServerConfig.baseUrl}/SUBMIT_VISIT'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(data),
+      );
 
-    // Anggap success
-    return true;
+      print('[SUBMIT VISIT] Status: ${response.statusCode}');
+      print('[SUBMIT VISIT] Body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final json = jsonDecode(response.body);
+        return json['success'] == true;
+      } else {
+        return false;
+      }
+    } catch (e) {
+      print('[SUBMIT VISIT] Error: $e');
+      return false;
+    }
   }
 }

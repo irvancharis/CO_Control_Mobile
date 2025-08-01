@@ -1,7 +1,14 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:path/path.dart';
+import 'package:sqflite/sqflite.dart';
+import 'package:http/http.dart' as http;
+
 import '../models/feature_model.dart';
 import '../services/feature_service.dart';
-import 'pelanggan_list_screen.dart'; // <- PENTING
+import '../services/sync_service.dart';
+import 'pelanggan_list_screen.dart';
+import '../config/server.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({Key? key}) : super(key: key);
@@ -11,12 +18,82 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  late Future<List<FeatureItem>> _futureFeatures;
+  late Future<List<Feature>> _futureFeatures;
+  bool isSyncing = false;
+  bool isExporting = false;
 
   @override
   void initState() {
     super.initState();
     _futureFeatures = FeatureService().fetchFeatures();
+  }
+
+  // SYNC LOGIC
+  Future<void> doSync(BuildContext context) async {
+    setState(() => isSyncing = true);
+    try {
+      await SyncService.syncAll();
+      if (!mounted) return;
+      setState(() {
+        _futureFeatures = FeatureService().fetchFeatures();
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Sync selesai!')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Sync gagal: $e')),
+      );
+    }
+    if (!mounted) return;
+    setState(() => isSyncing = false);
+  }
+
+  // EXPORT LOGIC
+  Future<void> exportDatabase(BuildContext context) async {
+    setState(() => isExporting = true);
+    try {
+      // Path database
+      final dbPath = join(await getDatabasesPath(), 'appdb.db');
+      final dbFile = File(dbPath);
+
+      if (!(await dbFile.exists())) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Database tidak ditemukan')),
+        );
+        setState(() => isExporting = false);
+        return;
+      }
+
+      // Kirim ke server (ganti URL di sini)
+      final String baseUrl = ServerConfig.baseUrl;
+      final url = Uri.parse('$baseUrl/upload-db');
+      var request = http.MultipartRequest('POST', url)
+        ..files.add(await http.MultipartFile.fromPath('file', dbFile.path));
+
+      final response = await request.send();
+
+      if (!mounted) return;
+      if (response.statusCode == 200) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('Database berhasil di-upload ke server!')),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Upload gagal: ${response.statusCode}')),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Export gagal: $e')),
+      );
+    }
+    if (!mounted) return;
+    setState(() => isExporting = false);
   }
 
   IconData getIconData(String iconName) {
@@ -37,11 +114,40 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Dashboard")),
-      body: FutureBuilder<List<FeatureItem>>(
+      appBar: AppBar(
+        title: const Text("Dashboard"),
+        actions: [
+          // EXPORT DB BUTTON
+          IconButton(
+            icon: isExporting
+                ? const SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: Colors.white))
+                : const Icon(Icons.file_upload),
+            tooltip: 'Export Database (Download)',
+            onPressed: isExporting ? null : () => exportDatabase(context),
+          ),
+          // SYNC BUTTON
+          IconButton(
+            icon: isSyncing
+                ? const SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: Colors.white))
+                : const Icon(Icons.sync),
+            tooltip: 'Sync Data Master (Server → Lokal)',
+            onPressed: isSyncing ? null : () => doSync(context),
+          ),
+        ],
+      ),
+      body: FutureBuilder<List<Feature>>(
         future: _futureFeatures,
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
+          if (snapshot.connectionState == ConnectionState.waiting ||
+              isSyncing) {
             return const Center(child: CircularProgressIndicator());
           } else if (snapshot.hasError) {
             return Center(child: Text("Error: ${snapshot.error}"));
@@ -63,7 +169,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
               final feature = features[index];
               return GestureDetector(
                 onTap: () {
-                  // NAVIGASI KE LIST PELANGGAN (BUKAN LANGSUNG KE CHECKLIST)
                   Navigator.push(
                     context,
                     MaterialPageRoute(

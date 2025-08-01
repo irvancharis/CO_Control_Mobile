@@ -1,37 +1,35 @@
-import 'feature_subdetail_model.dart';
-
-class FeatureDetail {
-  final String id; // ID_FEATUREDETAIL (UUID)
-  final String idFeature; // ID_FEATURE
+class FeatureSubDetail {
+  final String id; // ID_FEATURESUBDETAIL
+  final String idFeatureDetail; // ID_FEATUREDETAIL
   final String nama; // NAME
-  final String icon; // ICON (nullable)
   final int seq; // SEQ
   final int isRequired; // IS_REQUIRED
   final int isActive; // IS_ACTIVE
-  final String? keterangan; // KETERANGAN (nullable)
-  final String? type; // TYPE (nullable)
-  final List<FeatureSubDetail> subDetails; // opsional
+  final String? keterangan; // KETERANGAN
+  final String? icon; // ICON
+  final String? type; // TYPE
 
-  FeatureDetail({
+  bool isChecked; // UI-only
+
+  FeatureSubDetail({
     required this.id,
-    required this.idFeature,
+    required this.idFeatureDetail,
     required this.nama,
-    required this.icon,
     required this.seq,
     required this.isRequired,
     required this.isActive,
-    required this.keterangan,
-    required this.type,
-    this.subDetails = const [],
+    this.keterangan,
+    this.icon,
+    this.type,
+    this.isChecked = false,
   });
 
-  /// ✅ Parsing dari JSON (server)
-  factory FeatureDetail.fromJson(Map<String, dynamic> json) {
-    return FeatureDetail(
-      id: json['ID_FEATUREDETAIL']?.toString() ?? '',
-      idFeature: json['ID_FEATURE']?.toString() ?? '',
+  /// ✅ Parsing dari JSON API (server)
+  factory FeatureSubDetail.fromJson(Map<String, dynamic> json) {
+    return FeatureSubDetail(
+      id: json['ID_FEATURESUBDETAIL']?.toString() ?? '',
+      idFeatureDetail: json['ID_FEATUREDETAIL']?.toString() ?? '',
       nama: json['NAME'] ?? '',
-      icon: json['ICON'],
       seq: json['SEQ'] is int
           ? json['SEQ']
           : int.tryParse(json['SEQ']?.toString() ?? '') ?? 0,
@@ -42,19 +40,18 @@ class FeatureDetail {
           ? json['IS_ACTIVE']
           : int.tryParse(json['IS_ACTIVE']?.toString() ?? '') ?? 0,
       keterangan: json['KETERANGAN'],
+      icon: json['ICON'],
       type: json['TYPE'],
-      subDetails: [], // akan diisi terpisah jika ada
+      isChecked: json['isChecked'] == true || json['isChecked'] == 1,
     );
   }
 
-  /// ✅ Parsing dari database
-  factory FeatureDetail.fromMap(Map<String, dynamic> map,
-      [List<FeatureSubDetail>? subs]) {
-    return FeatureDetail(
+  /// ✅ Parsing dari database (tanpa isChecked)
+  factory FeatureSubDetail.fromMap(Map<String, dynamic> map) {
+    return FeatureSubDetail(
       id: map['id']?.toString() ?? '',
-      idFeature: map['idFeature']?.toString() ?? '',
+      idFeatureDetail: map['idFeatureDetail']?.toString() ?? '',
       nama: map['nama'] ?? '',
-      icon: map['icon'],
       seq: map['seq'] is int
           ? map['seq']
           : int.tryParse(map['seq'].toString()) ?? 0,
@@ -65,35 +62,36 @@ class FeatureDetail {
           ? map['isActive']
           : int.tryParse(map['isActive'].toString()) ?? 0,
       keterangan: map['keterangan'],
+      icon: map['icon'],
       type: map['type'],
-      subDetails: subs ?? [],
+      isChecked: false, // default saat ambil dari DB
     );
   }
 
-  /// ✅ Untuk insert ke database SQLite
+  /// ✅ Untuk insert ke SQLite (tanpa isChecked)
   Map<String, dynamic> toMap() => {
         'id': id,
-        'idFeature': idFeature,
+        'idFeatureDetail': idFeatureDetail,
         'nama': nama,
-        'icon': icon,
         'seq': seq,
         'isRequired': isRequired,
         'isActive': isActive,
         'keterangan': keterangan,
+        'icon': icon,
         'type': type,
       };
 
-  /// ✅ Untuk encode ke JSON (jika perlu kirim balik)
+  /// ✅ Untuk simpan ke checklist_progress (jsonEncode)
   Map<String, dynamic> toJson() => {
-        'ID_FEATUREDETAIL': id,
-        'ID_FEATURE': idFeature,
-        'NAME': nama,
-        'ICON': icon,
-        'SEQ': seq,
-        'IS_REQUIRED': isRequired,
-        'IS_ACTIVE': isActive,
-        'KETERANGAN': keterangan,
-        'TYPE': type,
-        'SUBDETAIL': subDetails.map((e) => e.toJson()).toList(),
+        'id': id,
+        'idFeatureDetail': idFeatureDetail,
+        'nama': nama,
+        'seq': seq,
+        'isRequired': isRequired,
+        'isActive': isActive,
+        'keterangan': keterangan,
+        'icon': icon,
+        'type': type,
+        'isChecked': isChecked,
       };
 }

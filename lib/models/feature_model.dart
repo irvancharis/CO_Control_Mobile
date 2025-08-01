@@ -1,22 +1,32 @@
-class FeatureItem {
-  final String id; // UUID
+class Feature {
+  final String id;
   final String nama;
-  final String route;
   final String icon;
 
-  FeatureItem({
+  Feature({
     required this.id,
     required this.nama,
-    required this.route,
     required this.icon,
   });
 
-  factory FeatureItem.fromJson(Map<String, dynamic> json) {
-    return FeatureItem(
-      id: json['ID_FEATURE'], // Tetap ambil dari kolom ini
-      nama: json['NAMA'] ?? '',
-      route: json['ROUTE'] ?? '',
-      icon: json['ICON'] ?? 'home',
-    );
-  }
+  // FROM API JSON
+  factory Feature.fromJson(Map<String, dynamic> json) => Feature(
+        id: json['ID_FEATURE']?.toString() ?? '',
+        nama: json['NAMA'] ?? '',
+        icon: json['ICON'] ?? '',
+      );
+
+  // FROM DB MAP
+  factory Feature.fromMap(Map<String, dynamic> map) => Feature(
+        id: map['id']?.toString() ?? '',
+        nama: map['nama'] ?? '',
+        icon: map['icon'] ?? '',
+      );
+
+  // TO DB MAP
+  Map<String, dynamic> toMap() => {
+        'id': id,
+        'nama': nama,
+        'icon': icon,
+      };
 }
