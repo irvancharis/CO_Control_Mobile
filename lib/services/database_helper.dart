@@ -290,6 +290,19 @@ class DatabaseHelper {
     );
   }
 
+  Future<Map<String, dynamic>?> getVisitByPelangganId(
+      String idPelanggan) async {
+    final db = await database;
+    final result = await db.query(
+      'visit',
+      where: 'idpelanggan = ?',
+      whereArgs: [idPelanggan],
+      orderBy: 'tanggal DESC',
+      limit: 1,
+    );
+    return result.isNotEmpty ? result.first : null;
+  }
+
   Future<Map<String, dynamic>?> getVisitByPelangganAndFeature({
     required String idPelanggan,
     required String idFeature,

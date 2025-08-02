@@ -1,4 +1,3 @@
-// Tambahkan semua import kamu seperti biasa
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:dropdown_search/dropdown_search.dart';
@@ -31,6 +30,7 @@ class _PelangganListScreenState extends State<PelangganListScreen> {
   Sales? selectedSales;
   List<Pelanggan> pelangganList = [];
   List<Pelanggan> filteredPelangganList = [];
+  Map<String, bool> visitStatusMap = {};
   bool isLoading = false;
   bool isSalesLocked = false;
   String? lastNocall;
@@ -66,8 +66,8 @@ class _PelangganListScreenState extends State<PelangganListScreen> {
       );
 
       final pelanggan = await PelangganService().fetchAllPelangganLocal();
+      await loadVisitStatus(pelanggan);
 
-      // Gunakan satu kali setState di akhir, agar semua update state masuk
       setState(() {
         selectedSales = sales;
         isSalesLocked = true;
@@ -75,6 +75,18 @@ class _PelangganListScreenState extends State<PelangganListScreen> {
         pelangganList = pelanggan;
         filteredPelangganList = List.from(pelanggan);
       });
+    }
+  }
+
+  Future<void> loadVisitStatus(List<Pelanggan> pelangganList) async {
+    visitStatusMap.clear();
+    for (var pelanggan in pelangganList) {
+      final visit =
+          await DatabaseHelper.instance.getVisitByPelangganId(pelanggan.id);
+      final isSelesai = visit != null &&
+          visit['selesai'] != null &&
+          visit['selesai'].toString().isNotEmpty;
+      visitStatusMap[pelanggan.id] = isSelesai;
     }
   }
 
@@ -144,27 +156,6 @@ class _PelangganListScreenState extends State<PelangganListScreen> {
 
         final details = detailMap.values.toList();
 
-        // ✨ Debug Log Semua Payload Visit
-        print('\n📦 Mempersiapkan Submit Visit ID: $visitId');
-        print('Tanggal   : ${visit['tanggal']}');
-        print('Supervisor: ${visit['idspv']}');
-        print('Pelanggan : ${visit['idpelanggan']}');
-        print('Latitude  : ${visit['latitude']}');
-        print('Longitude : ${visit['longitude']}');
-        print('Mulai     : ${visit['mulai']}');
-        print('Selesai   : ${visit['selesai']}');
-        print('Catatan   : ${visit['catatan']}');
-        print('Sales ID  : ${visit['idsales']}');
-        print('NoCall    : ${visit['nocall']}');
-        print('Checklist :');
-
-        for (final d in details) {
-          print('  Detail: ${d.id} (${d.nama})');
-          for (final s in d.subDetails) {
-            print('    - Sub: ${s.id} | checked: ${s.isChecked}');
-          }
-        }
-
         final success = await SubmitService.submitVisit(
           idVisit: visitId,
           tanggal: DateTime.parse(visit['tanggal']),
@@ -184,10 +175,7 @@ class _PelangganListScreenState extends State<PelangganListScreen> {
         );
 
         if (!success) {
-          print('❌ Gagal submit visit: $visitId\n');
           throw Exception("Gagal submit visit $visitId");
-        } else {
-          print('✅ Berhasil submit visit: $visitId\n');
         }
       }
 
@@ -197,7 +185,6 @@ class _PelangganListScreenState extends State<PelangganListScreen> {
         );
       }
     } catch (e) {
-      print('🚨 Exception: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Gagal mengirim data: $e')),
@@ -220,6 +207,7 @@ class _PelangganListScreenState extends State<PelangganListScreen> {
     try {
       await PelangganService().downloadAndSavePelanggan(lastNocall!);
       pelangganList = await PelangganService().fetchAllPelangganLocal();
+      await loadVisitStatus(pelangganList);
       filteredPelangganList = List.from(pelangganList);
       isSalesLocked = true;
       await saveState();
@@ -353,7 +341,10 @@ class _PelangganListScreenState extends State<PelangganListScreen> {
                       itemCount: filteredPelangganList.length,
                       itemBuilder: (context, index) {
                         final pelanggan = filteredPelangganList[index];
+                        final isSelesai = visitStatusMap[pelanggan.id] ?? false;
+
                         return Card(
+                          color: isSelesai ? Colors.green[100] : null,
                           margin: const EdgeInsets.symmetric(
                               horizontal: 10, vertical: 6),
                           child: ListTile(
@@ -364,8 +355,39 @@ class _PelangganListScreenState extends State<PelangganListScreen> {
                                     color: Colors.black,
                                     overflow: TextOverflow.ellipsis)),
                             subtitle: Text(pelanggan.alamat),
-                            trailing: const Icon(Icons.chevron_right),
-                            onTap: () {
+                            trailing: isSelesai
+                                ? const Icon(Icons.check_circle,
+                                    color: Colors.green)
+                                : const Icon(Icons.chevron_right),
+                            onTap: () async {
+                              final isSelesai =
+                                  visitStatusMap[pelanggan.id] ?? false;
+
+                              if (isSelesai) {
+                                final lanjut = await showDialog<bool>(
+                                  context: context,
+                                  builder: (ctx) => AlertDialog(
+                                    title: const Text("Kunjungan Selesai"),
+                                    content: const Text(
+                                        "Pelanggan ini sudah selesai kunjungan. Apakah Anda ingin membuka kembali checklist-nya?"),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () =>
+                                            Navigator.of(ctx).pop(false),
+                                        child: const Text("Batal"),
+                                      ),
+                                      ElevatedButton(
+                                        onPressed: () =>
+                                            Navigator.of(ctx).pop(true),
+                                        child: const Text("Lanjutkan"),
+                                      ),
+                                    ],
+                                  ),
+                                );
+
+                                if (lanjut != true) return;
+                              }
+
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(
