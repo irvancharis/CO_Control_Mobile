@@ -38,7 +38,8 @@ class DatabaseHelper {
             latitude TEXT,
             longitude TEXT,
             tipePelanggan TEXT,
-            tipePembayaran TEXT
+            tipePembayaran TEXT,
+            fitur TEXT
           )
         ''');
 
@@ -55,7 +56,8 @@ class DatabaseHelper {
           CREATE TABLE IF NOT EXISTS feature (
             id TEXT PRIMARY KEY,
             nama TEXT,
-            icon TEXT
+            icon TEXT,
+            type TEXT
           )
         ''');
 
@@ -124,9 +126,16 @@ class DatabaseHelper {
         conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
-  Future<List<Pelanggan>> getAllPelanggan() async {
+  Future<List<Pelanggan>> getAllPelanggan({String? fitur}) async {
     final db = await database;
-    final maps = await db.query('pelanggan');
+
+    // Jika fitur disediakan, tambahkan klausa WHERE
+    final List<Map<String, dynamic>> maps = await db.query(
+      'pelanggan',
+      where: fitur != null ? 'fitur = ?' : null,
+      whereArgs: fitur != null ? [fitur] : null,
+    );
+
     return maps.map((e) => Pelanggan.fromMap(e)).toList();
   }
 

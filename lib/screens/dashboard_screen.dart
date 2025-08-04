@@ -8,6 +8,7 @@ import '../models/feature_model.dart';
 import '../services/feature_service.dart';
 import '../services/sync_service.dart';
 import 'pelanggan_list_screen.dart';
+import 'pelanggan_list_custom_screen.dart';
 import '../config/server.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -169,14 +170,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
               final feature = features[index];
               return GestureDetector(
                 onTap: () {
+                  final action = feature.type?.toLowerCase();
+                  final screen = action == 'custom'
+                      ? PelangganListCustomScreen(
+                          featureId: feature.id,
+                          title: feature.nama,
+                        )
+                      : PelangganListScreen(
+                          featureId: feature.id,
+                          title: feature.nama,
+                        );
+
                   Navigator.push(
                     context,
-                    MaterialPageRoute(
-                      builder: (_) => PelangganListScreen(
-                        featureId: feature.id,
-                        title: feature.nama,
-                      ),
-                    ),
+                    MaterialPageRoute(builder: (_) => screen),
                   );
                 },
                 child: Card(

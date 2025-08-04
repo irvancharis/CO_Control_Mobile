@@ -9,23 +9,23 @@ import '../services/pelanggan_service.dart';
 import '../services/database_helper.dart';
 import '../services/submit_service.dart';
 import 'detail_feature_checklist_screen.dart';
-import 'dart:convert';
 
-class PelangganListScreen extends StatefulWidget {
+class PelangganListCustomScreen extends StatefulWidget {
   final String featureId;
   final String title;
 
-  const PelangganListScreen({
+  const PelangganListCustomScreen({
     Key? key,
     required this.featureId,
     required this.title,
   }) : super(key: key);
 
   @override
-  State<PelangganListScreen> createState() => _PelangganListScreenState();
+  State<PelangganListCustomScreen> createState() =>
+      _PelangganListCustomScreenState();
 }
 
-class _PelangganListScreenState extends State<PelangganListScreen> {
+class _PelangganListCustomScreenState extends State<PelangganListCustomScreen> {
   List<Sales> salesList = [];
   Sales? selectedSales;
   List<Pelanggan> pelangganList = [];
@@ -34,12 +34,42 @@ class _PelangganListScreenState extends State<PelangganListScreen> {
   bool isLoading = false;
   bool isSalesLocked = false;
   String? lastNocall;
+  DateTime selectedDate = DateTime.now();
   final searchPelangganController = TextEditingController();
+  final dateController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
+    dateController.text =
+        "${selectedDate.day}-${selectedDate.month}-${selectedDate.year}";
     loadSales();
+  }
+
+  Future<void> pilihTanggal(BuildContext context) async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: selectedDate,
+      firstDate: DateTime(2024),
+      lastDate: DateTime.now(),
+    );
+
+    if (picked != null && picked != selectedDate) {
+      setState(() {
+        selectedDate = picked;
+        dateController.text = "${picked.day}-${picked.month}-${picked.year}";
+        if (selectedSales != null) {
+          lastNocall = generateNocall(selectedSales!, tanggal: picked);
+        }
+      });
+    }
+  }
+
+  String generateNocall(Sales sales, {DateTime? tanggal}) {
+    final date = tanggal ?? DateTime.now();
+    final formatted =
+        "${date.year}${date.month.toString().padLeft(2, '0')}${date.day.toString().padLeft(2, '0')}";
+    return "W${sales.idCabang}_${sales.id}_$formatted";
   }
 
   Future<void> loadSales() async {
@@ -47,58 +77,6 @@ class _PelangganListScreenState extends State<PelangganListScreen> {
     salesList = await DatabaseHelper.instance.getAllSales();
     setState(() => isLoading = false);
     await restoreState();
-  }
-
-  Future<void> restoreState() async {
-    final prefs = await SharedPreferences.getInstance();
-    final savedSalesId = prefs.getString('selectedSalesId');
-    final savedSalesCabang = prefs.getString('selectedSalesCabang');
-    final savedNocall = prefs.getString('lastNocall');
-    final savedLocked = prefs.getBool('isSalesLocked') ?? false;
-
-    if (savedSalesId != null &&
-        savedSalesCabang != null &&
-        savedLocked &&
-        salesList.isNotEmpty) {
-      final sales = salesList.firstWhere(
-        (s) => s.id == savedSalesId && s.idCabang == savedSalesCabang,
-        orElse: () => salesList.first,
-      );
-
-      final pelanggan = await PelangganService()
-          .fetchAllPelangganLocal(fitur: widget.featureId);
-      await loadVisitStatus(pelanggan);
-
-      setState(() {
-        selectedSales = sales;
-        isSalesLocked = true;
-        lastNocall = savedNocall;
-        pelangganList = pelanggan;
-        filteredPelangganList = List.from(pelanggan);
-      });
-    }
-  }
-
-  Future<void> loadVisitStatus(List<Pelanggan> pelangganList) async {
-    visitStatusMap.clear();
-    for (var pelanggan in pelangganList) {
-      final visit =
-          await DatabaseHelper.instance.getVisitByPelangganId(pelanggan.id);
-      final isSelesai = visit != null &&
-          visit['selesai'] != null &&
-          visit['selesai'].toString().isNotEmpty;
-      visitStatusMap[pelanggan.id] = isSelesai;
-    }
-  }
-
-  Future<void> saveState() async {
-    final prefs = await SharedPreferences.getInstance();
-    if (selectedSales != null) {
-      await prefs.setString('selectedSalesId', selectedSales!.id);
-      await prefs.setString('selectedSalesCabang', selectedSales!.idCabang);
-    }
-    await prefs.setString('lastNocall', lastNocall ?? '');
-    await prefs.setBool('isSalesLocked', isSalesLocked);
   }
 
   Future<void> submitSemuaData() async {
@@ -196,21 +174,61 @@ class _PelangganListScreenState extends State<PelangganListScreen> {
     }
   }
 
+  Future<void> restoreState() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedSalesId = prefs.getString('selectedSalesId');
+    final savedSalesCabang = prefs.getString('selectedSalesCabang');
+    final savedNocall = prefs.getString('lastNocall');
+    final savedLocked = prefs.getBool('isSalesLocked') ?? false;
+
+    if (savedSalesId != null &&
+        savedSalesCabang != null &&
+        savedLocked &&
+        salesList.isNotEmpty) {
+      final sales = salesList.firstWhere(
+        (s) => s.id == savedSalesId && s.idCabang == savedSalesCabang,
+        orElse: () => salesList.first,
+      );
+
+      final pelanggan = await PelangganService()
+          .fetchAllPelangganLocal(fitur: widget.featureId);
+      await loadVisitStatus(pelanggan);
+
+      setState(() {
+        selectedSales = sales;
+        isSalesLocked = true;
+        lastNocall = savedNocall;
+        pelangganList = pelanggan;
+        filteredPelangganList = List.from(pelanggan);
+      });
+    }
+  }
+
+  Future<void> loadVisitStatus(List<Pelanggan> pelangganList) async {
+    visitStatusMap.clear();
+    for (var pelanggan in pelangganList) {
+      final visit =
+          await DatabaseHelper.instance.getVisitByPelangganId(pelanggan.id);
+      final isSelesai = visit != null &&
+          visit['selesai'] != null &&
+          visit['selesai'].toString().isNotEmpty;
+      visitStatusMap[pelanggan.id] = isSelesai;
+    }
+  }
+
   Future<void> loadAndDownloadPelanggan() async {
     if (selectedSales == null) return;
     setState(() {
       isLoading = true;
       pelangganList = [];
       filteredPelangganList = [];
-      lastNocall = generateNocall(selectedSales!);
     });
 
     try {
-      await PelangganService().downloadAndSavePelanggan(
+      await PelangganService().downloadAndSavePelangganCustom(
         lastNocall!,
         widget.featureId,
       );
-
       pelangganList = await PelangganService()
           .fetchAllPelangganLocal(fitur: widget.featureId);
       await loadVisitStatus(pelangganList);
@@ -230,11 +248,14 @@ class _PelangganListScreenState extends State<PelangganListScreen> {
     setState(() => isLoading = false);
   }
 
-  String generateNocall(Sales sales) {
-    final now = DateTime.now();
-    final tanggal =
-        "${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}";
-    return "W${sales.idCabang}_${sales.id}_$tanggal";
+  Future<void> saveState() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (selectedSales != null) {
+      await prefs.setString('selectedSalesId', selectedSales!.id);
+      await prefs.setString('selectedSalesCabang', selectedSales!.idCabang);
+    }
+    await prefs.setString('lastNocall', lastNocall ?? '');
+    await prefs.setBool('isSalesLocked', isSalesLocked);
   }
 
   @override
@@ -295,13 +316,51 @@ class _PelangganListScreenState extends State<PelangganListScreen> {
                     : ElevatedButton.icon(
                         onPressed: isLoading || selectedSales == null
                             ? null
-                            : loadAndDownloadPelanggan,
+                            : () {
+                                lastNocall = generateNocall(selectedSales!,
+                                    tanggal: selectedDate);
+                                loadAndDownloadPelanggan();
+                              },
                         icon: const Icon(Icons.download),
                         label: const Text('Download'),
                       ),
               ],
             ),
           ),
+          if (isSalesLocked)
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: dateController,
+                      readOnly: true,
+                      onTap: () => pilihTanggal(context),
+                      decoration: const InputDecoration(
+                        labelText: 'Pilih Tanggal',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.calendar_today),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      if (selectedSales != null) {
+                        setState(() {
+                          lastNocall = generateNocall(selectedSales!,
+                              tanggal: selectedDate);
+                        });
+                        loadAndDownloadPelanggan();
+                      }
+                    },
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Terapkan'),
+                  ),
+                ],
+              ),
+            ),
           if (isSalesLocked && lastNocall != null)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -366,33 +425,30 @@ class _PelangganListScreenState extends State<PelangganListScreen> {
                                     color: Colors.green)
                                 : const Icon(Icons.chevron_right),
                             onTap: () async {
-                              final isSelesai =
-                                  visitStatusMap[pelanggan.id] ?? false;
-
-                              if (isSelesai) {
-                                final lanjut = await showDialog<bool>(
-                                  context: context,
-                                  builder: (ctx) => AlertDialog(
-                                    title: const Text("Kunjungan Selesai"),
-                                    content: const Text(
-                                        "Pelanggan ini sudah selesai kunjungan. Apakah Anda ingin membuka kembali checklist-nya?"),
-                                    actions: [
-                                      TextButton(
-                                        onPressed: () =>
-                                            Navigator.of(ctx).pop(false),
-                                        child: const Text("Batal"),
+                              final lanjut = isSelesai
+                                  ? await showDialog<bool>(
+                                      context: context,
+                                      builder: (ctx) => AlertDialog(
+                                        title: const Text("Kunjungan Selesai"),
+                                        content: const Text(
+                                            "Pelanggan ini sudah selesai kunjungan. Apakah Anda ingin membuka kembali checklist-nya?"),
+                                        actions: [
+                                          TextButton(
+                                            onPressed: () =>
+                                                Navigator.of(ctx).pop(false),
+                                            child: const Text("Batal"),
+                                          ),
+                                          ElevatedButton(
+                                            onPressed: () =>
+                                                Navigator.of(ctx).pop(true),
+                                            child: const Text("Lanjutkan"),
+                                          ),
+                                        ],
                                       ),
-                                      ElevatedButton(
-                                        onPressed: () =>
-                                            Navigator.of(ctx).pop(true),
-                                        child: const Text("Lanjutkan"),
-                                      ),
-                                    ],
-                                  ),
-                                );
+                                    )
+                                  : true;
 
-                                if (lanjut != true) return;
-                              }
+                              if (lanjut != true) return;
 
                               Navigator.push(
                                 context,

@@ -56,6 +56,9 @@ class SubmitService {
         body: jsonEncode(data),
       );
 
+      print('DEBUG SUBMIT PAYLOAD');
+      print(jsonEncode(data));
+
       print('[SUBMIT VISIT] Status: ${response.statusCode}');
       print('[SUBMIT VISIT] Body: ${response.body}');
 

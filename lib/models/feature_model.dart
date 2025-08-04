@@ -2,11 +2,13 @@ class Feature {
   final String id;
   final String nama;
   final String icon;
+  final String type;
 
   Feature({
     required this.id,
     required this.nama,
     required this.icon,
+    required this.type,
   });
 
   // FROM API JSON
@@ -14,6 +16,7 @@ class Feature {
         id: json['ID_FEATURE']?.toString() ?? '',
         nama: json['NAMA'] ?? '',
         icon: json['ICON'] ?? '',
+        type: json['TYPE'] ?? '',
       );
 
   // FROM DB MAP
@@ -21,6 +24,7 @@ class Feature {
         id: map['id']?.toString() ?? '',
         nama: map['nama'] ?? '',
         icon: map['icon'] ?? '',
+        type: map['type'] ?? '',
       );
 
   // TO DB MAP
@@ -28,5 +32,6 @@ class Feature {
         'id': id,
         'nama': nama,
         'icon': icon,
+        'type': type,
       };
 }

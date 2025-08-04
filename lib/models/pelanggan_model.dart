@@ -9,6 +9,7 @@ class Pelanggan {
   final String longitude;
   final String tipePelanggan;
   final String tipePembayaran;
+  final String fitur;
 
   Pelanggan({
     required this.id,
@@ -21,6 +22,7 @@ class Pelanggan {
     required this.longitude,
     required this.tipePelanggan,
     required this.tipePembayaran,
+    required this.fitur,
   });
 
   factory Pelanggan.fromJson(Map<String, dynamic> json) => Pelanggan(
@@ -34,6 +36,7 @@ class Pelanggan {
         longitude: json['LONGITUDE'] ?? '',
         tipePelanggan: json['TIPEPELANGGAN'] ?? '',
         tipePembayaran: json['TIPEPEMBAYARAN'] ?? '',
+        fitur: json['FITUR'] ?? '',
       );
 
   Map<String, dynamic> toMap() => {
@@ -47,6 +50,7 @@ class Pelanggan {
         'longitude': longitude,
         'tipePelanggan': tipePelanggan,
         'tipePembayaran': tipePembayaran,
+        'fitur': fitur,
       };
 
   factory Pelanggan.fromMap(Map<String, dynamic> map) => Pelanggan(
@@ -60,5 +64,6 @@ class Pelanggan {
         longitude: map['longitude'],
         tipePelanggan: map['tipePelanggan'],
         tipePembayaran: map['tipePembayaran'],
+        fitur: map['fitur'],
       );
 }
