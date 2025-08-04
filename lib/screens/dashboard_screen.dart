@@ -10,6 +10,7 @@ import '../services/sync_service.dart';
 import 'pelanggan_list_screen.dart';
 import 'pelanggan_list_custom_screen.dart';
 import '../config/server.dart';
+import 'package:intl/intl.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({Key? key}) : super(key: key);
@@ -54,8 +55,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
   // EXPORT LOGIC
   Future<void> exportDatabase(BuildContext context) async {
     setState(() => isExporting = true);
+
     try {
-      // Path database
+      // Ambil path database
       final dbPath = join(await getDatabasesPath(), 'appdb.db');
       final dbFile = File(dbPath);
 
@@ -68,15 +70,29 @@ class _DashboardScreenState extends State<DashboardScreen> {
         return;
       }
 
-      // Kirim ke server (ganti URL di sini)
-      final String baseUrl = ServerConfig.baseUrl;
-      final url = Uri.parse('$baseUrl/upload-db');
+      // 🔧 Buat nama file dengan format KODEUSER_TANGGAL.db
+      final kodeUser = 'DIDIK'; // Ganti sesuai user aktif
+      final tanggalStr = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+      final fileName = '${kodeUser}_$tanggalStr.db';
+
+      // 🔄 Baca isi file sebagai bytes
+      final fileBytes = await dbFile.readAsBytes();
+
+      // 🔼 Kirim ke server
+      final url = Uri.parse('${ServerConfig.baseUrl}/upload-db');
       var request = http.MultipartRequest('POST', url)
-        ..files.add(await http.MultipartFile.fromPath('file', dbFile.path));
+        ..files.add(
+          http.MultipartFile.fromBytes(
+            'file',
+            fileBytes,
+            filename: fileName, // <-- di sini kita override nama file
+          ),
+        );
 
       final response = await request.send();
 
       if (!mounted) return;
+
       if (response.statusCode == 200) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -93,6 +109,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         SnackBar(content: Text('Export gagal: $e')),
       );
     }
+
     if (!mounted) return;
     setState(() => isExporting = false);
   }
