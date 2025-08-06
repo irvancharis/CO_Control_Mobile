@@ -180,10 +180,22 @@ class _PelangganListScreenState extends State<PelangganListScreen> {
         }
       }
 
+      // Bersihkan database dan shared preferences
+      await DatabaseHelper.instance.clearAllTables();
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs
+          .remove('isSalesLocked'); // atau prefs.clear() jika ingin hapus semua
+      await prefs.remove('selectedSales');
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Semua data berhasil dikirim')),
         );
+
+        // Navigasi kembali ke Dashboard dan hapus semua stack halaman sebelumnya
+        Navigator.of(context)
+            .pushNamedAndRemoveUntil('/dashboard', (route) => false);
       }
     } catch (e) {
       if (mounted) {
@@ -246,15 +258,26 @@ class _PelangganListScreenState extends State<PelangganListScreen> {
             padding: const EdgeInsets.all(12),
             child: Row(
               children: [
+                // Bagian Sales: label jika terkunci, dropdown jika belum
                 Expanded(
-                  child: DropdownSearch<Sales>(
-                    selectedItem: selectedSales,
-                    items: salesList,
-                    itemAsString: (s) => "${s.kodeSales} - ${s.nama}",
-                    enabled: !isSalesLocked,
-                    onChanged: isSalesLocked
-                        ? null
-                        : (s) {
+                  child: isSalesLocked
+                      ? Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 18),
+                          decoration: BoxDecoration(
+                            border: Border.all(color: Colors.grey),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            "${selectedSales?.kodeSales ?? ''} - ${selectedSales?.nama ?? ''}",
+                            style: const TextStyle(fontSize: 16),
+                          ),
+                        )
+                      : DropdownSearch<Sales>(
+                          selectedItem: selectedSales,
+                          items: salesList,
+                          itemAsString: (s) => "${s.kodeSales} - ${s.nama}",
+                          onChanged: (s) {
                             setState(() {
                               selectedSales = s;
                               pelangganList = [];
@@ -263,42 +286,29 @@ class _PelangganListScreenState extends State<PelangganListScreen> {
                               searchPelangganController.clear();
                             });
                           },
-                    dropdownDecoratorProps: DropDownDecoratorProps(
-                      dropdownSearchDecoration: const InputDecoration(
-                        labelText: 'Pilih Sales',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                isSalesLocked
-                    ? ElevatedButton.icon(
-                        onPressed: isLoading
-                            ? null
-                            : () async {
-                                await SharedPreferences.getInstance()
-                                    .then((prefs) => prefs.clear());
-                                setState(() {
-                                  selectedSales = null;
-                                  isSalesLocked = false;
-                                  pelangganList = [];
-                                  filteredPelangganList = [];
-                                });
-                              },
-                        icon: const Icon(Icons.lock_reset),
-                        label: const Text('Ubah Sales'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.orange,
+                          dropdownDecoratorProps: DropDownDecoratorProps(
+                            dropdownSearchDecoration: const InputDecoration(
+                              labelText: 'Pilih Sales',
+                              border: OutlineInputBorder(),
+                            ),
+                          ),
                         ),
-                      )
-                    : ElevatedButton.icon(
-                        onPressed: isLoading || selectedSales == null
-                            ? null
-                            : loadAndDownloadPelanggan,
-                        icon: const Icon(Icons.download),
-                        label: const Text('Download'),
-                      ),
+                ),
+
+                const SizedBox(width: 8),
+
+                // Tombol hanya muncul jika belum terkunci
+                if (!isSalesLocked && !isLoading && selectedSales != null)
+                  ElevatedButton.icon(
+                    onPressed: () async {
+                      await loadAndDownloadPelanggan(); // Panggil fungsi download
+                      setState(() {
+                        isSalesLocked = true; // Kunci tampilan setelah download
+                      });
+                    },
+                    icon: const Icon(Icons.download),
+                    label: const Text('Download'),
+                  ),
               ],
             ),
           ),
@@ -308,10 +318,10 @@ class _PelangganListScreenState extends State<PelangganListScreen> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text("Jumlah: ${filteredPelangganList.length}",
+                  Text("JUMLAH: ${filteredPelangganList.length}",
                       style: const TextStyle(fontWeight: FontWeight.bold)),
                   Text("NOCALL: $lastNocall",
-                      style: const TextStyle(color: Colors.grey)),
+                      style: const TextStyle(fontWeight: FontWeight.bold)),
                 ],
               ),
             ),

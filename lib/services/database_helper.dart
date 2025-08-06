@@ -338,6 +338,34 @@ class DatabaseHelper {
     return await db.query('visit_checklist');
   }
 
+  Future<String?> getCatatanByVisitId(String visitId) async {
+    final db = await database;
+    final result = await db.query(
+      'visit',
+      columns: ['catatan'],
+      where: 'id_visit = ?',
+      whereArgs: [visitId],
+      limit: 1,
+    );
+    if (result.isNotEmpty) {
+      return result.first['catatan'] as String?;
+    }
+    return null;
+  }
+
+  Future<void> clearAllTables() async {
+    final db = await instance.database;
+    await db.delete('visit');
+    await db.delete('visit_checklist');
+    await db.delete('sales');
+    await db.delete('feature');
+    await db.delete('feature_detail');
+    await db.delete('feature_subdetail');
+    await db.delete('pelanggan');
+
+    // tambahkan tabel lain jika ada
+  }
+
   Future<void> clearTable(String table) async {
     final db = await database;
     await db.delete(table);

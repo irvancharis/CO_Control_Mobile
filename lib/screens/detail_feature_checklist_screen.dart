@@ -38,13 +38,21 @@ class _DetailFeatureChecklistScreenState
   bool isSubmitting = false;
   String visitId = '';
   bool isLoadingChecklist = true;
+  late TextEditingController catatanController;
 
   @override
   void initState() {
     super.initState();
     mulai = DateTime.now();
+    catatanController = TextEditingController(); // Inisialisasi dulu
     getSpvFromPrefs().then((_) => checkOrCreateVisit());
     getCurrentLocation();
+  }
+
+  @override
+  void dispose() {
+    catatanController.dispose(); // Wajib dispose
+    super.dispose();
   }
 
   Future<void> getSpvFromPrefs() async {
@@ -90,7 +98,18 @@ class _DetailFeatureChecklistScreenState
       );
     }
 
-    await loadChecklist(); // load setelah visitId pasti ada
+    await _loadCatatanFromDB(); // Panggil setelah visitId tersedia
+    await loadChecklist();
+  }
+
+  Future<void> _loadCatatanFromDB() async {
+    final result = await DatabaseHelper.instance.getCatatanByVisitId(visitId);
+    if (mounted) {
+      setState(() {
+        catatan = result ?? '';
+        catatanController.text = catatan;
+      });
+    }
   }
 
   Future<void> loadChecklist() async {
@@ -212,30 +231,6 @@ class _DetailFeatureChecklistScreenState
     setState(() => isSubmitting = true);
     final selesai = DateTime.now();
 
-    // Cetak semua data sebelum submit
-    print('📤 Submit Visit Payload:');
-    print('idVisit: $visitId');
-    print('tanggal: ${DateTime.now()}');
-    print('idSpv: $idSpv');
-    print('idPelanggan: ${widget.pelanggan.id}');
-    print('latitude: $latitude');
-    print('longitude: $longitude');
-    print('mulai: $mulai');
-    print('selesai: $selesai');
-    print('catatan: $catatan');
-    print('idFeature: ${widget.featureId}');
-    print('idSales: null');
-    print('nocall: ${widget.pelanggan.nocall}');
-    print('details:');
-
-    for (var detail in _details) {
-      print('  FeatureDetail: ${detail.id} - ${detail.nama}');
-      for (var sub in detail.subDetails) {
-        print(
-            '    SubDetail: ${sub.id} - ${sub.nama} | checked: ${sub.isChecked}');
-      }
-    }
-
     await SubmitVisitLocalService.saveChecklistToLocal(
       idVisit: visitId,
       tanggal: DateTime.now(),
@@ -247,7 +242,7 @@ class _DetailFeatureChecklistScreenState
       longitude: longitude,
       catatan: catatan,
       idFeature: widget.featureId,
-      idSales: 0, // ganti jika kamu sudah tahu idSales-nya
+      idSales: 0,
       nocall: widget.pelanggan.nocall,
     );
 
@@ -285,14 +280,14 @@ class _DetailFeatureChecklistScreenState
                   Padding(
                     padding: const EdgeInsets.all(16),
                     child: TextFormField(
-                      initialValue: catatan,
+                      controller: catatanController,
                       decoration: const InputDecoration(
                         labelText: 'Catatan',
                         border: OutlineInputBorder(),
                       ),
                       maxLines: 2,
                       onChanged: (val) async {
-                        catatan = val;
+                        setState(() => catatan = val);
                         await _updateChecklistToLocal();
                       },
                     ),
@@ -317,7 +312,7 @@ class _DetailFeatureChecklistScreenState
                             ),
                           ),
                   ),
-                  const SizedBox(height: 24), // jarak bawah biar tidak mentok
+                  const SizedBox(height: 24),
                 ],
               ),
             ),

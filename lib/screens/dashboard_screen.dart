@@ -131,104 +131,132 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text("Dashboard"),
-        actions: [
-          // EXPORT DB BUTTON
-          IconButton(
-            icon: isExporting
-                ? const SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2, color: Colors.white))
-                : const Icon(Icons.file_upload),
-            tooltip: 'Export Database (Download)',
-            onPressed: isExporting ? null : () => exportDatabase(context),
-          ),
-          // SYNC BUTTON
-          IconButton(
-            icon: isSyncing
-                ? const SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2, color: Colors.white))
-                : const Icon(Icons.sync),
-            tooltip: 'Sync Data Master (Server → Lokal)',
-            onPressed: isSyncing ? null : () => doSync(context),
-          ),
-        ],
-      ),
-      body: FutureBuilder<List<Feature>>(
-        future: _futureFeatures,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting ||
-              isSyncing) {
-            return const Center(child: CircularProgressIndicator());
-          } else if (snapshot.hasError) {
-            return Center(child: Text("Error: ${snapshot.error}"));
-          } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            return const Center(child: Text("Tidak ada menu fitur"));
-          }
+    return PopScope(
+      canPop: false,
+      onPopInvoked: (didPop) async {
+        if (didPop) return;
 
-          final features = snapshot.data!;
-          return GridView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: features.length,
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-              childAspectRatio: 3 / 2,
+        final shouldExit = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Keluar Aplikasi'),
+            content: const Text('Yakin ingin keluar dari aplikasi?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Tidak'),
+              ),
+              TextButton(
+                onPressed: () => exit(0),
+                child: const Text('Ya'),
+              ),
+            ],
+          ),
+        );
+
+        if (shouldExit == true) {
+          Navigator.of(context).maybePop();
+        }
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text("Dashboard"),
+          actions: [
+            // EXPORT DB BUTTON
+            IconButton(
+              icon: isExporting
+                  ? const SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white))
+                  : const Icon(Icons.file_upload),
+              tooltip: 'Export Database (Download)',
+              onPressed: isExporting ? null : () => exportDatabase(context),
             ),
-            itemBuilder: (context, index) {
-              final feature = features[index];
-              return GestureDetector(
-                onTap: () {
-                  final action = feature.type?.toLowerCase();
-                  final screen = action == 'custom'
-                      ? PelangganListCustomScreen(
-                          featureId: feature.id,
-                          title: feature.nama,
-                        )
-                      : PelangganListScreen(
-                          featureId: feature.id,
-                          title: feature.nama,
-                        );
+            // SYNC BUTTON
+            IconButton(
+              icon: isSyncing
+                  ? const SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white))
+                  : const Icon(Icons.sync),
+              tooltip: 'Sync Data Master (Server → Lokal)',
+              onPressed: isSyncing ? null : () => doSync(context),
+            ),
+          ],
+        ),
+        body: FutureBuilder<List<Feature>>(
+          future: _futureFeatures,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting ||
+                isSyncing) {
+              return const Center(child: CircularProgressIndicator());
+            } else if (snapshot.hasError) {
+              return Center(child: Text("Error: ${snapshot.error}"));
+            } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
+              return const Center(child: Text("Tidak ada menu fitur"));
+            }
 
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => screen),
-                  );
-                },
-                child: Card(
-                  elevation: 4,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(getIconData(feature.icon), size: 40),
-                        const SizedBox(height: 10),
-                        Text(
-                          feature.nama,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
+            final features = snapshot.data!;
+            return GridView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: features.length,
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 12,
+                childAspectRatio: 3 / 2,
+              ),
+              itemBuilder: (context, index) {
+                final feature = features[index];
+                return GestureDetector(
+                  onTap: () {
+                    final action = feature.type?.toLowerCase();
+                    final screen = action == 'custom'
+                        ? PelangganListCustomScreen(
+                            featureId: feature.id,
+                            title: feature.nama,
+                          )
+                        : PelangganListScreen(
+                            featureId: feature.id,
+                            title: feature.nama,
+                          );
+
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => screen),
+                    );
+                  },
+                  child: Card(
+                    elevation: 4,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(getIconData(feature.icon), size: 40),
+                          const SizedBox(height: 10),
+                          Text(
+                            feature.nama,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
-                ),
-              );
-            },
-          );
-        },
+                );
+              },
+            );
+          },
+        ),
       ),
     );
   }
