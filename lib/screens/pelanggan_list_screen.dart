@@ -210,6 +210,7 @@ class _PelangganListScreenState extends State<PelangganListScreen> {
 
   Future<void> loadAndDownloadPelanggan() async {
     if (selectedSales == null) return;
+
     setState(() {
       isLoading = true;
       pelangganList = [];
@@ -218,28 +219,71 @@ class _PelangganListScreenState extends State<PelangganListScreen> {
     });
 
     try {
+      // 1. Download pelanggan dari server
       await PelangganService().downloadAndSavePelanggan(
         lastNocall!,
         widget.featureId,
       );
 
-      pelangganList = await PelangganService()
+      // 2. Ambil dari lokal
+      final downloaded = await PelangganService()
           .fetchAllPelangganLocal(fitur: widget.featureId);
-      await loadVisitStatus(pelangganList);
-      filteredPelangganList = List.from(pelangganList);
-      isSalesLocked = true;
+
+      await loadVisitStatus(downloaded);
+
+      // 3. Kalau kosong → refresh halaman penuh
+      if (downloaded.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              duration: Duration(seconds: 3),
+              behavior: SnackBarBehavior.floating,
+              backgroundColor: Color.fromARGB(255, 126, 8, 0),
+              content: Text('Data pelanggan kosong, halaman akan di-refresh',
+                  style: TextStyle(color: Colors.white)),
+            ),
+          );
+
+          // ✅ Ganti "NamaHalaman" dengan nama class halaman ini
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) => PelangganListScreen(
+                featureId: widget.featureId,
+                title: 'Pelanggan',
+              ),
+            ),
+          );
+        }
+        return; // ⛔ Jangan lanjut karena halaman sudah di-replace
+      }
+
+      // 4. Jika ada pelanggan, update state
+      setState(() {
+        pelangganList = downloaded;
+        filteredPelangganList = List.from(downloaded);
+        isSalesLocked = true;
+        isLoading = false;
+      });
+
+      // 5. Simpan state
       await saveState();
+
+      // 6. Tampilkan notifikasi
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Pelanggan berhasil di-download')));
+          const SnackBar(content: Text('Pelanggan berhasil di-download')),
+        );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Gagal download: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Gagal download: $e')),
+        );
       }
+
+      setState(() => isLoading = false);
     }
-    setState(() => isLoading = false);
   }
 
   String generateNocall(Sales sales) {

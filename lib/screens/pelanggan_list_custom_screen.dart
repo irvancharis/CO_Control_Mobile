@@ -1,3 +1,5 @@
+// Full updated script with required UI logic
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:dropdown_search/dropdown_search.dart';
@@ -82,6 +84,127 @@ class _PelangganListCustomScreenState extends State<PelangganListCustomScreen> {
     await restoreState();
   }
 
+  Future<void> restoreState() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedSalesId = prefs.getString('selectedSalesId');
+    final savedSalesCabang = prefs.getString('selectedSalesCabang');
+    final savedNocall = prefs.getString('lastNocall');
+    final savedLocked = prefs.getBool('isSalesLocked') ?? false;
+
+    if (savedSalesId != null &&
+        savedSalesCabang != null &&
+        savedLocked &&
+        salesList.isNotEmpty) {
+      final sales = salesList.firstWhere(
+        (s) => s.id == savedSalesId && s.idCabang == savedSalesCabang,
+        orElse: () => salesList.first,
+      );
+
+      final pelanggan = await PelangganService()
+          .fetchAllPelangganLocal(fitur: widget.featureId);
+      await loadVisitStatus(pelanggan);
+
+      setState(() {
+        selectedSales = sales;
+        isSalesLocked = true;
+        lastNocall = savedNocall;
+        pelangganList = pelanggan;
+        filteredPelangganList = List.from(pelanggan);
+      });
+    }
+  }
+
+  Future<void> saveState() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (selectedSales != null) {
+      await prefs.setString('selectedSalesId', selectedSales!.id);
+      await prefs.setString('selectedSalesCabang', selectedSales!.idCabang);
+    }
+    await prefs.setString('lastNocall', lastNocall ?? '');
+    await prefs.setBool('isSalesLocked', isSalesLocked);
+  }
+
+  Future<void> loadVisitStatus(List<Pelanggan> pelangganList) async {
+    visitStatusMap.clear();
+    for (var pelanggan in pelangganList) {
+      final visit =
+          await DatabaseHelper.instance.getVisitByPelangganId(pelanggan.id);
+      final isSelesai = visit != null &&
+          visit['selesai'] != null &&
+          visit['selesai'].toString().isNotEmpty;
+      visitStatusMap[pelanggan.id] = isSelesai;
+    }
+  }
+
+  Future<void> loadAndDownloadPelanggan() async {
+    if (selectedSales == null || lastNocall == null) return;
+
+    setState(() {
+      isLoading = true;
+      pelangganList = [];
+      filteredPelangganList = [];
+    });
+
+    try {
+      await PelangganService().downloadAndSavePelangganCustom(
+        lastNocall!,
+        widget.featureId,
+      );
+
+      final downloaded = await PelangganService()
+          .fetchAllPelangganLocal(fitur: widget.featureId);
+
+      await loadVisitStatus(downloaded);
+
+      if (downloaded.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              duration: Duration(seconds: 3),
+              behavior: SnackBarBehavior.floating,
+              backgroundColor: Color.fromARGB(255, 126, 8, 0),
+              content: Text('Data pelanggan kosong, halaman akan di-refresh',
+                  style: TextStyle(color: Colors.white)),
+            ),
+          );
+
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) => PelangganListCustomScreen(
+                featureId: widget.featureId,
+                title: 'Pelanggan',
+              ),
+            ),
+          );
+        }
+        return;
+      }
+
+      setState(() {
+        pelangganList = downloaded;
+        filteredPelangganList = List.from(downloaded);
+        isSalesLocked = true;
+        isLoading = false;
+      });
+
+      await saveState();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Pelanggan berhasil di-download')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Gagal download: $e')),
+        );
+      }
+      setState(() => isLoading = false);
+    }
+  }
+
   Future<void> submitSemuaData() async {
     setState(() => isLoading = true);
     try {
@@ -161,20 +284,16 @@ class _PelangganListCustomScreenState extends State<PelangganListCustomScreen> {
         }
       }
 
-      // Bersihkan database dan shared preferences
       await DatabaseHelper.instance.clearAllTables();
 
       final prefs = await SharedPreferences.getInstance();
-      await prefs
-          .remove('isSalesLocked'); // atau prefs.clear() jika ingin hapus semua
+      await prefs.remove('isSalesLocked');
       await prefs.remove('selectedSales');
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Semua data berhasil dikirim')),
         );
-
-        // Navigasi kembali ke Dashboard dan hapus semua stack halaman sebelumnya
         Navigator.of(context)
             .pushNamedAndRemoveUntil('/dashboard', (route) => false);
       }
@@ -189,90 +308,6 @@ class _PelangganListCustomScreenState extends State<PelangganListCustomScreen> {
     }
   }
 
-  Future<void> restoreState() async {
-    final prefs = await SharedPreferences.getInstance();
-    final savedSalesId = prefs.getString('selectedSalesId');
-    final savedSalesCabang = prefs.getString('selectedSalesCabang');
-    final savedNocall = prefs.getString('lastNocall');
-    final savedLocked = prefs.getBool('isSalesLocked') ?? false;
-
-    if (savedSalesId != null &&
-        savedSalesCabang != null &&
-        savedLocked &&
-        salesList.isNotEmpty) {
-      final sales = salesList.firstWhere(
-        (s) => s.id == savedSalesId && s.idCabang == savedSalesCabang,
-        orElse: () => salesList.first,
-      );
-
-      final pelanggan = await PelangganService()
-          .fetchAllPelangganLocal(fitur: widget.featureId);
-      await loadVisitStatus(pelanggan);
-
-      setState(() {
-        selectedSales = sales;
-        isSalesLocked = true;
-        lastNocall = savedNocall;
-        pelangganList = pelanggan;
-        filteredPelangganList = List.from(pelanggan);
-      });
-    }
-  }
-
-  Future<void> loadVisitStatus(List<Pelanggan> pelangganList) async {
-    visitStatusMap.clear();
-    for (var pelanggan in pelangganList) {
-      final visit =
-          await DatabaseHelper.instance.getVisitByPelangganId(pelanggan.id);
-      final isSelesai = visit != null &&
-          visit['selesai'] != null &&
-          visit['selesai'].toString().isNotEmpty;
-      visitStatusMap[pelanggan.id] = isSelesai;
-    }
-  }
-
-  Future<void> loadAndDownloadPelanggan() async {
-    if (selectedSales == null) return;
-    setState(() {
-      isLoading = true;
-      pelangganList = [];
-      filteredPelangganList = [];
-    });
-
-    try {
-      await PelangganService().downloadAndSavePelangganCustom(
-        lastNocall!,
-        widget.featureId,
-      );
-      pelangganList = await PelangganService()
-          .fetchAllPelangganLocal(fitur: widget.featureId);
-      await loadVisitStatus(pelangganList);
-      filteredPelangganList = List.from(pelangganList);
-      isSalesLocked = true;
-      await saveState();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Pelanggan berhasil di-download')));
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Gagal download: $e')));
-      }
-    }
-    setState(() => isLoading = false);
-  }
-
-  Future<void> saveState() async {
-    final prefs = await SharedPreferences.getInstance();
-    if (selectedSales != null) {
-      await prefs.setString('selectedSalesId', selectedSales!.id);
-      await prefs.setString('selectedSalesCabang', selectedSales!.idCabang);
-    }
-    await prefs.setString('lastNocall', lastNocall ?? '');
-    await prefs.setBool('isSalesLocked', isSalesLocked);
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -282,7 +317,6 @@ class _PelangganListCustomScreenState extends State<PelangganListCustomScreen> {
             padding: const EdgeInsets.all(12),
             child: Row(
               children: [
-                // Bagian Sales: label jika terkunci, dropdown jika belum
                 Expanded(
                   child: isSalesLocked
                       ? Container(
@@ -304,8 +338,6 @@ class _PelangganListCustomScreenState extends State<PelangganListCustomScreen> {
                           onChanged: (s) {
                             setState(() {
                               selectedSales = s;
-                              pelangganList = [];
-                              filteredPelangganList = [];
                               lastNocall = null;
                               searchPelangganController.clear();
                             });
@@ -318,25 +350,11 @@ class _PelangganListCustomScreenState extends State<PelangganListCustomScreen> {
                           ),
                         ),
                 ),
-
                 const SizedBox(width: 8),
-
-                // Tombol hanya muncul jika belum terkunci
-                if (!isSalesLocked && !isLoading && selectedSales != null)
-                  ElevatedButton.icon(
-                    onPressed: () async {
-                      await loadAndDownloadPelanggan(); // Panggil fungsi download
-                      setState(() {
-                        isSalesLocked = true; // Kunci tampilan setelah download
-                      });
-                    },
-                    icon: const Icon(Icons.download),
-                    label: const Text('Download'),
-                  ),
               ],
             ),
           ),
-          if (isSalesLocked)
+          if (isSalesLocked || selectedSales != null)
             Padding(
               padding: const EdgeInsets.all(12),
               child: Row(
@@ -345,7 +363,7 @@ class _PelangganListCustomScreenState extends State<PelangganListCustomScreen> {
                     child: TextField(
                       controller: dateController,
                       readOnly: true,
-                      onTap: () => pilihTanggal(context),
+                      onTap: isSalesLocked ? null : () => pilihTanggal(context),
                       decoration: const InputDecoration(
                         labelText: 'Pilih Tanggal',
                         border: OutlineInputBorder(),
@@ -354,19 +372,21 @@ class _PelangganListCustomScreenState extends State<PelangganListCustomScreen> {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  ElevatedButton.icon(
-                    onPressed: () {
-                      if (selectedSales != null) {
+                  if (!isSalesLocked &&
+                      !isLoading &&
+                      selectedSales != null &&
+                      dateController.text.isNotEmpty)
+                    ElevatedButton.icon(
+                      onPressed: () {
                         setState(() {
                           lastNocall = generateNocall(selectedSales!,
                               tanggal: selectedDate);
                         });
                         loadAndDownloadPelanggan();
-                      }
-                    },
-                    icon: const Icon(Icons.refresh),
-                    label: const Text('Terapkan'),
-                  ),
+                      },
+                      icon: const Icon(Icons.download),
+                      label: const Text('Download'),
+                    ),
                 ],
               ),
             ),

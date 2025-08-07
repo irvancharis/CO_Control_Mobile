@@ -247,7 +247,7 @@ class _DetailFeatureChecklistScreenState
     );
 
     setState(() => isSubmitting = false);
-    Navigator.pop(context);
+    Navigator.pop(context, true); // ⬅️ Kirim sinyal kembali
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('Checklist berhasil disimpan secara lokal'),
