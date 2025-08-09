@@ -192,34 +192,33 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget build(BuildContext context) {
     return PopScope(
       // Biarkan sistem pop kalau masih ada page sebelumnya.
-      canPop: true,
+      canPop: false,
       onPopInvoked: (didPop) async {
         if (didPop) return; // sudah dipop (mis. kembali ke pelanggan)
 
         // Kalau sudah root (tidak bisa pop), baru tampilkan dialog keluar.
         final canPop = Navigator.of(context).canPop();
-        if (!canPop) {
-          final shouldExit = await showDialog<bool>(
-            context: context,
-            builder: (context) => AlertDialog(
-              title: const Text('Keluar Aplikasi'),
-              content: const Text('Yakin ingin keluar dari aplikasi?'),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(false),
-                  child: const Text('Tidak'),
-                ),
-                TextButton(
-                  onPressed: () => exit(0),
-                  child: const Text('Ya'),
-                ),
-              ],
-            ),
-          );
 
-          if (shouldExit == true) {
-            Navigator.of(context).maybePop();
-          }
+        final shouldExit = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Keluar Aplikasi'),
+            content: const Text('Yakin ingin keluar dari aplikasi?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Tidak'),
+              ),
+              TextButton(
+                onPressed: () => exit(0),
+                child: const Text('Ya'),
+              ),
+            ],
+          ),
+        );
+
+        if (shouldExit == true) {
+          Navigator.of(context).maybePop();
         }
       },
       child: Scaffold(
