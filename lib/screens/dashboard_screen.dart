@@ -219,10 +219,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         ? PelangganListCustomScreen(
                             featureId: feature.id,
                             title: feature.nama,
+                            featureType: feature.type,
                           )
                         : PelangganListScreen(
                             featureId: feature.id,
                             title: feature.nama,
+                            featureType: feature.type,
                           );
 
                     Navigator.push(

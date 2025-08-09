@@ -14,11 +14,13 @@ import 'dart:convert';
 class PelangganListScreen extends StatefulWidget {
   final String featureId;
   final String title;
+  final String featureType;
 
   const PelangganListScreen({
     Key? key,
     required this.featureId,
     required this.title,
+    required this.featureType,
   }) : super(key: key);
 
   @override
@@ -251,6 +253,7 @@ class _PelangganListScreenState extends State<PelangganListScreen> {
               builder: (context) => PelangganListScreen(
                 featureId: widget.featureId,
                 title: 'Pelanggan',
+                featureType: widget.featureType,
               ),
             ),
           );
@@ -455,6 +458,7 @@ class _PelangganListScreenState extends State<PelangganListScreen> {
                                     featureId: widget.featureId,
                                     title: 'Checklist',
                                     pelanggan: pelanggan,
+                                    featureType: widget.featureType,
                                   ),
                                 ),
                               );

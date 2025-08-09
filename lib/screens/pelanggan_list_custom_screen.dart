@@ -15,11 +15,13 @@ import 'detail_feature_checklist_screen.dart';
 class PelangganListCustomScreen extends StatefulWidget {
   final String featureId;
   final String title;
+  final String featureType;
 
   const PelangganListCustomScreen({
     Key? key,
     required this.featureId,
     required this.title,
+    required this.featureType,
   }) : super(key: key);
 
   @override
@@ -174,6 +176,7 @@ class _PelangganListCustomScreenState extends State<PelangganListCustomScreen> {
               builder: (context) => PelangganListCustomScreen(
                 featureId: widget.featureId,
                 title: 'Pelanggan',
+                featureType: widget.featureType,
               ),
             ),
           );
@@ -486,6 +489,7 @@ class _PelangganListCustomScreenState extends State<PelangganListCustomScreen> {
                                     featureId: widget.featureId,
                                     title: 'Checklist',
                                     pelanggan: pelanggan,
+                                    featureType: widget.featureType,
                                   ),
                                 ),
                               );

@@ -9,17 +9,21 @@ import '../models/feature_subdetail_model.dart';
 import '../models/pelanggan_model.dart';
 import '../services/database_helper.dart';
 import '../services/submit_visit_service.dart';
+import 'pelanggan_list_screen.dart';
+import 'pelanggan_list_custom_screen.dart';
 
 class DetailFeatureChecklistScreen extends StatefulWidget {
   final String featureId;
   final String title;
   final Pelanggan pelanggan;
+  final String featureType;
 
   const DetailFeatureChecklistScreen({
     Key? key,
     required this.featureId,
     required this.title,
     required this.pelanggan,
+    required this.featureType,
   }) : super(key: key);
 
   @override
@@ -246,13 +250,34 @@ class _DetailFeatureChecklistScreenState
       nocall: widget.pelanggan.nocall,
     );
 
+    if (!mounted) return;
     setState(() => isSubmitting = false);
-    Navigator.pop(context, true); // ⬅️ Kirim sinyal kembali
+
+    // Pesan sukses
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('Checklist berhasil disimpan secara lokal'),
         backgroundColor: Colors.green,
       ),
+    );
+
+    // Tentukan halaman tujuan
+    final isCustom = widget.featureType.toLowerCase() == 'custom';
+    final screen = isCustom
+        ? PelangganListCustomScreen(
+            featureId: widget.featureId,
+            title: widget.title,
+            featureType: widget.featureType,
+          )
+        : PelangganListScreen(
+            featureId: widget.featureId,
+            title: widget.title,
+            featureType: widget.featureType,
+          );
+
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => screen),
     );
   }
 

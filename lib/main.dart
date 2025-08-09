@@ -41,6 +41,7 @@ class ControlSalesApp extends StatelessWidget {
           return PelangganListScreen(
             featureId: args?['featureId'] ?? '',
             title: args?['title'] ?? '',
+            featureType: args?['featureType'] ?? '',
           );
         },
         // Untuk checklist screen, sebaiknya pakai push biasa (MaterialPageRoute) dari PelangganListScreen,
