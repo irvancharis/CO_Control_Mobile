@@ -45,10 +45,24 @@ class _PelangganListScreenState extends State<PelangganListScreen> {
   }
 
   Future<void> loadSales() async {
+    if (isLoading) return; // guard biar ga double load
     setState(() => isLoading = true);
-    salesList = await DatabaseHelper.instance.getAllSales();
-    setState(() => isLoading = false);
-    await restoreState();
+    try {
+      final list = await DatabaseHelper.instance.getAllSales();
+      if (!mounted) return;
+      setState(() {
+        salesList = list;
+      });
+      // lanjut restore state (tanpa ubah isLoading)
+      await restoreState();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Gagal memuat sales: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => isLoading = false);
+    }
   }
 
   Future<void> restoreState() async {
@@ -186,8 +200,7 @@ class _PelangganListScreenState extends State<PelangganListScreen> {
       await DatabaseHelper.instance.clearAllTables();
 
       final prefs = await SharedPreferences.getInstance();
-      await prefs
-          .remove('isSalesLocked'); // atau prefs.clear() jika ingin hapus semua
+      await prefs.remove('isSalesLocked'); // atau prefs.clear()
       await prefs.remove('selectedSales');
 
       if (mounted) {
@@ -195,7 +208,7 @@ class _PelangganListScreenState extends State<PelangganListScreen> {
           const SnackBar(content: Text('Semua data berhasil dikirim')),
         );
 
-        // Navigasi kembali ke Dashboard dan hapus semua stack halaman sebelumnya
+        // Kembali ke Dashboard & bersihkan stack
         Navigator.of(context)
             .pushNamedAndRemoveUntil('/dashboard', (route) => false);
       }
@@ -241,12 +254,13 @@ class _PelangganListScreenState extends State<PelangganListScreen> {
               duration: Duration(seconds: 3),
               behavior: SnackBarBehavior.floating,
               backgroundColor: Color.fromARGB(255, 126, 8, 0),
-              content: Text('Data pelanggan kosong, halaman akan di-refresh',
-                  style: TextStyle(color: Colors.white)),
+              content: Text(
+                'Data pelanggan kosong, halaman akan di-refresh',
+                style: TextStyle(color: Colors.white),
+              ),
             ),
           );
 
-          // ✅ Ganti "NamaHalaman" dengan nama class halaman ini
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(
@@ -258,7 +272,7 @@ class _PelangganListScreenState extends State<PelangganListScreen> {
             ),
           );
         }
-        return; // ⛔ Jangan lanjut karena halaman sudah di-replace
+        return;
       }
 
       // 4. Jika ada pelanggan, update state
@@ -296,198 +310,239 @@ class _PelangganListScreenState extends State<PelangganListScreen> {
     return "W${sales.idCabang}_${sales.id}_$tanggal";
   }
 
+  // ====== DIALOG KONFIRMASI BACK TANPA APPBAR ======
+  Future<bool> _handleWillPop() async {
+    final keluar = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Konfirmasi'),
+        content: const Text('Yakin ingin kembali ke Dashboard?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Tidak'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Iya'),
+          ),
+        ],
+      ),
+    );
+
+    if (keluar == true) {
+      if (mounted) {
+        Navigator.of(context)
+            .pushNamed('/dashboard', arguments: widget.featureId);
+      }
+      return false; // kita handle manual navigasinya
+    }
+    return false; // batal: tetap di halaman ini
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: Row(
-              children: [
-                // Bagian Sales: label jika terkunci, dropdown jika belum
-                Expanded(
-                  child: isSalesLocked
-                      ? Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 18),
-                          decoration: BoxDecoration(
-                            border: Border.all(color: Colors.grey),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Text(
-                            "${selectedSales?.kodeSales ?? ''} - ${selectedSales?.nama ?? ''}",
-                            style: const TextStyle(fontSize: 16),
-                          ),
-                        )
-                      : DropdownSearch<Sales>(
-                          selectedItem: selectedSales,
-                          items: salesList,
-                          itemAsString: (s) => "${s.kodeSales} - ${s.nama}",
-                          onChanged: (s) {
-                            setState(() {
-                              selectedSales = s;
-                              pelangganList = [];
-                              filteredPelangganList = [];
-                              lastNocall = null;
-                              searchPelangganController.clear();
-                            });
-                          },
-                          dropdownDecoratorProps: DropDownDecoratorProps(
-                            dropdownSearchDecoration: const InputDecoration(
-                              labelText: 'Pilih Sales',
-                              border: OutlineInputBorder(),
+    return WillPopScope(
+      onWillPop: _handleWillPop, // intercept tombol back Android
+      child: Scaffold(
+        // TANPA APPBAR
+        body: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  // Bagian Sales: label jika terkunci, dropdown jika belum
+                  Expanded(
+                    child: isSalesLocked
+                        ? Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 18),
+                            decoration: BoxDecoration(
+                              border: Border.all(color: Colors.grey),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              "${selectedSales?.kodeSales ?? ''} - ${selectedSales?.nama ?? ''}",
+                              style: const TextStyle(fontSize: 16),
+                            ),
+                          )
+                        : DropdownSearch<Sales>(
+                            selectedItem: selectedSales,
+                            items: salesList,
+                            itemAsString: (s) => "${s.kodeSales} - ${s.nama}",
+                            onChanged: (s) {
+                              setState(() {
+                                selectedSales = s;
+                                pelangganList = [];
+                                filteredPelangganList = [];
+                                lastNocall = null;
+                                searchPelangganController.clear();
+                              });
+                            },
+                            dropdownDecoratorProps:
+                                const DropDownDecoratorProps(
+                              dropdownSearchDecoration: InputDecoration(
+                                labelText: 'Pilih Sales',
+                                border: OutlineInputBorder(),
+                              ),
                             ),
                           ),
-                        ),
-                ),
-
-                const SizedBox(width: 8),
-
-                // Tombol hanya muncul jika belum terkunci
-                if (!isSalesLocked && !isLoading && selectedSales != null)
-                  ElevatedButton.icon(
-                    onPressed: () async {
-                      await loadAndDownloadPelanggan(); // Panggil fungsi download
-                      setState(() {
-                        isSalesLocked = true; // Kunci tampilan setelah download
-                      });
-                    },
-                    icon: const Icon(Icons.download),
-                    label: const Text('Download'),
                   ),
-              ],
-            ),
-          ),
-          if (isSalesLocked && lastNocall != null)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text("JUMLAH: ${filteredPelangganList.length}",
-                      style: const TextStyle(fontWeight: FontWeight.bold)),
-                  Text("NOCALL: $lastNocall",
-                      style: const TextStyle(fontWeight: FontWeight.bold)),
+
+                  const SizedBox(width: 8),
+
+                  // Tombol hanya muncul jika belum terkunci
+                  if (!isSalesLocked && !isLoading && selectedSales != null)
+                    ElevatedButton.icon(
+                      onPressed: () async {
+                        await loadAndDownloadPelanggan(); // Panggil fungsi download
+                        setState(() {
+                          isSalesLocked =
+                              true; // Kunci tampilan setelah download
+                        });
+                      },
+                      icon: const Icon(Icons.download),
+                      label: const Text('Download'),
+                    ),
                 ],
               ),
             ),
-          if (isSalesLocked)
-            Padding(
-              padding: const EdgeInsets.all(12),
-              child: TextField(
-                controller: searchPelangganController,
-                onChanged: (q) {
-                  final keyword = q.toLowerCase();
-                  setState(() {
-                    filteredPelangganList = pelangganList.where((p) {
-                      return p.nama.toLowerCase().contains(keyword) ||
-                          p.alamat.toLowerCase().contains(keyword) ||
-                          p.nocall.toLowerCase().contains(keyword);
-                    }).toList();
-                  });
-                },
-                decoration: const InputDecoration(
-                  labelText: 'Cari pelanggan',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.search),
+            if (isSalesLocked && lastNocall != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text("JUMLAH: ${filteredPelangganList.length}",
+                        style: const TextStyle(fontWeight: FontWeight.bold)),
+                    Text("NOCALL: $lastNocall",
+                        style: const TextStyle(fontWeight: FontWeight.bold)),
+                  ],
                 ),
               ),
-            ),
-          if (isLoading)
-            const Expanded(child: Center(child: CircularProgressIndicator()))
-          else
-            Expanded(
-              child: filteredPelangganList.isEmpty
-                  ? const Center(child: Text("Tidak ada pelanggan"))
-                  : ListView.builder(
-                      itemCount: filteredPelangganList.length,
-                      itemBuilder: (context, index) {
-                        final pelanggan = filteredPelangganList[index];
-                        final isSelesai = visitStatusMap[pelanggan.id] ?? false;
-
-                        return Card(
-                          color: isSelesai ? Colors.green[100] : null,
-                          margin: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 6),
-                          child: ListTile(
-                            title: Text(pelanggan.nama,
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 16,
-                                    color: Colors.black,
-                                    overflow: TextOverflow.ellipsis)),
-                            subtitle: Text(pelanggan.alamat),
-                            trailing: isSelesai
-                                ? const Icon(Icons.check_circle,
-                                    color: Colors.green)
-                                : const Icon(Icons.chevron_right),
-                            onTap: () async {
-                              final isSelesai =
-                                  visitStatusMap[pelanggan.id] ?? false;
-
-                              if (isSelesai) {
-                                final lanjut = await showDialog<bool>(
-                                  context: context,
-                                  builder: (ctx) => AlertDialog(
-                                    title: const Text("Kunjungan Selesai"),
-                                    content: const Text(
-                                        "Pelanggan ini sudah selesai kunjungan. Apakah Anda ingin membuka kembali checklist-nya?"),
-                                    actions: [
-                                      TextButton(
-                                        onPressed: () =>
-                                            Navigator.of(ctx).pop(false),
-                                        child: const Text("Batal"),
-                                      ),
-                                      ElevatedButton(
-                                        onPressed: () =>
-                                            Navigator.of(ctx).pop(true),
-                                        child: const Text("Lanjutkan"),
-                                      ),
-                                    ],
-                                  ),
-                                );
-
-                                if (lanjut != true) return;
-                              }
-
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => DetailFeatureChecklistScreen(
-                                    featureId: widget.featureId,
-                                    title: 'Checklist',
-                                    pelanggan: pelanggan,
-                                    featureType: widget.featureType,
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-                        );
-                      },
-                    ),
-            ),
-        ],
-      ),
-      bottomNavigationBar: isSalesLocked
-          ? SafeArea(
-              child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                child: ElevatedButton.icon(
-                  onPressed: isLoading ? null : submitSemuaData,
-                  icon: const Icon(Icons.cloud_upload),
-                  label: const Text('Selesai & Upload Semua'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
-                    minimumSize: const Size.fromHeight(50),
-                    foregroundColor: Colors.white,
+            if (isSalesLocked)
+              Padding(
+                padding: const EdgeInsets.all(12),
+                child: TextField(
+                  controller: searchPelangganController,
+                  onChanged: (q) {
+                    final keyword = q.toLowerCase();
+                    setState(() {
+                      filteredPelangganList = pelangganList.where((p) {
+                        return p.nama.toLowerCase().contains(keyword) ||
+                            p.alamat.toLowerCase().contains(keyword) ||
+                            p.nocall.toLowerCase().contains(keyword);
+                      }).toList();
+                    });
+                  },
+                  decoration: const InputDecoration(
+                    labelText: 'Cari pelanggan',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.search),
                   ),
                 ),
               ),
-            )
-          : null,
+            if (isLoading)
+              const Expanded(child: Center(child: CircularProgressIndicator()))
+            else
+              Expanded(
+                child: filteredPelangganList.isEmpty
+                    ? const Center(child: Text("Tidak ada pelanggan"))
+                    : ListView.builder(
+                        itemCount: filteredPelangganList.length,
+                        itemBuilder: (context, index) {
+                          final pelanggan = filteredPelangganList[index];
+                          final isSelesai =
+                              visitStatusMap[pelanggan.id] ?? false;
+
+                          return Card(
+                            color: isSelesai ? Colors.green[100] : null,
+                            margin: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 6),
+                            child: ListTile(
+                              title: Text(
+                                pelanggan.nama,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                  color: Colors.black,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              subtitle: Text(pelanggan.alamat),
+                              trailing: isSelesai
+                                  ? const Icon(Icons.check_circle,
+                                      color: Colors.green)
+                                  : const Icon(Icons.chevron_right),
+                              onTap: () async {
+                                final isSelesai =
+                                    visitStatusMap[pelanggan.id] ?? false;
+
+                                if (isSelesai) {
+                                  final lanjut = await showDialog<bool>(
+                                    context: context,
+                                    builder: (ctx) => AlertDialog(
+                                      title: const Text("Kunjungan Selesai"),
+                                      content: const Text(
+                                          "Pelanggan ini sudah selesai kunjungan. Apakah Anda ingin membuka kembali checklist-nya?"),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () =>
+                                              Navigator.of(ctx).pop(false),
+                                          child: const Text("Batal"),
+                                        ),
+                                        ElevatedButton(
+                                          onPressed: () =>
+                                              Navigator.of(ctx).pop(true),
+                                          child: const Text("Lanjutkan"),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+
+                                  if (lanjut != true) return;
+                                }
+
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) =>
+                                        DetailFeatureChecklistScreen(
+                                      featureId: widget.featureId,
+                                      title: 'Checklist',
+                                      pelanggan: pelanggan,
+                                      featureType: widget.featureType,
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          );
+                        },
+                      ),
+              ),
+          ],
+        ),
+        bottomNavigationBar: isSalesLocked
+            ? SafeArea(
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  child: ElevatedButton.icon(
+                    onPressed: isLoading ? null : submitSemuaData,
+                    icon: const Icon(Icons.cloud_upload),
+                    label: const Text('Selesai & Upload Semua'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+                      minimumSize: const Size.fromHeight(50),
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                ),
+              )
+            : null,
+      ),
     );
   }
 }

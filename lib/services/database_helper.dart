@@ -11,12 +11,14 @@ import '../models/feature_subdetail_model.dart';
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._internal();
   factory DatabaseHelper() => instance;
-  static Database? _database;
 
   DatabaseHelper._internal();
 
+  static Database? _database;
+
+  // ===== Open DB (auto-reopen bila closed) =====
   Future<Database> get database async {
-    if (_database != null) return _database!;
+    if (_database != null && _database!.isOpen) return _database!;
     _database = await _initDb();
     return _database!;
   }
@@ -27,96 +29,117 @@ class DatabaseHelper {
       path,
       version: 2,
       onCreate: (db, version) async {
-        await db.execute('''
-          CREATE TABLE IF NOT EXISTS pelanggan (
-            id TEXT PRIMARY KEY,
-            nama TEXT,
-            nocall TEXT,
-            alamat TEXT,
-            kecamatan TEXT,
-            kotakabupaten TEXT,
-            latitude TEXT,
-            longitude TEXT,
-            tipePelanggan TEXT,
-            tipePembayaran TEXT,
-            fitur TEXT
-          )
-        ''');
-
-        await db.execute('''
-          CREATE TABLE IF NOT EXISTS sales (
-            id TEXT PRIMARY KEY,
-            idCabang TEXT,
-            nama TEXT,
-            kodeSales TEXT
-          )
-        ''');
-
-        await db.execute('''
-          CREATE TABLE IF NOT EXISTS feature (
-            id TEXT PRIMARY KEY,
-            nama TEXT,
-            icon TEXT,
-            type TEXT
-          )
-        ''');
-
-        await db.execute('''
-          CREATE TABLE IF NOT EXISTS feature_detail (
-            id TEXT PRIMARY KEY,
-            idFeature TEXT,
-            nama TEXT,
-            icon TEXT,
-            seq INTEGER,
-            isRequired INTEGER,
-            isActive INTEGER,
-            keterangan TEXT,
-            type TEXT
-          )
-        ''');
-
-        await db.execute('''
-          CREATE TABLE IF NOT EXISTS feature_subdetail (
-            id TEXT PRIMARY KEY,
-            idFeatureDetail TEXT,
-            nama TEXT,
-            seq INTEGER,
-            isRequired INTEGER,
-            isActive INTEGER,
-            keterangan TEXT,
-            icon TEXT,
-            type TEXT
-          )
-        ''');
-
-        await db.execute('''
-          CREATE TABLE IF NOT EXISTS visit (
-            id_visit TEXT PRIMARY KEY,
-            tanggal TEXT,
-            idspv TEXT,
-            idpelanggan TEXT,
-            latitude TEXT,
-            longitude TEXT,
-            mulai TEXT,
-            selesai TEXT,
-            catatan TEXT,
-            idsales INTEGER,
-            nocall TEXT
-          )
-        ''');
-
-        await db.execute('''
-          CREATE TABLE IF NOT EXISTS visit_checklist (
-            id_visit TEXT,
-            id_feature TEXT,
-            id_featuredetail TEXT,
-            id_featuresubdetail TEXT,
-            checklist INTEGER,
-            PRIMARY KEY (id_visit, id_feature, id_featuredetail, id_featuresubdetail)
-          )
-        ''');
+        await _ensureTables(db);
+      },
+      onOpen: (db) async {
+        // Pastikan tabel selalu ada meskipun upgrade/migrasi
+        await _ensureTables(db);
+      },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        // Tambahkan migrasi yang diperlukan di sini, lalu:
+        await _ensureTables(db);
       },
     );
+  }
+
+  Future<void> _ensureTables(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS pelanggan (
+        id TEXT PRIMARY KEY,
+        nama TEXT,
+        nocall TEXT,
+        alamat TEXT,
+        kecamatan TEXT,
+        kotakabupaten TEXT,
+        latitude TEXT,
+        longitude TEXT,
+        tipePelanggan TEXT,
+        tipePembayaran TEXT,
+        fitur TEXT
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS sales (
+        id TEXT PRIMARY KEY,
+        idCabang TEXT,
+        nama TEXT,
+        kodeSales TEXT
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS feature (
+        id TEXT PRIMARY KEY,
+        nama TEXT,
+        icon TEXT,
+        type TEXT
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS feature_detail (
+        id TEXT PRIMARY KEY,
+        idFeature TEXT,
+        nama TEXT,
+        icon TEXT,
+        seq INTEGER,
+        isRequired INTEGER,
+        isActive INTEGER,
+        keterangan TEXT,
+        type TEXT
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS feature_subdetail (
+        id TEXT PRIMARY KEY,
+        idFeatureDetail TEXT,
+        nama TEXT,
+        seq INTEGER,
+        isRequired INTEGER,
+        isActive INTEGER,
+        keterangan TEXT,
+        icon TEXT,
+        type TEXT
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS visit (
+        id_visit TEXT PRIMARY KEY,
+        tanggal TEXT,
+        idspv TEXT,
+        idpelanggan TEXT,
+        latitude TEXT,
+        longitude TEXT,
+        mulai TEXT,
+        selesai TEXT,
+        catatan TEXT,
+        idsales INTEGER,
+        nocall TEXT
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS visit_checklist (
+        id_visit TEXT,
+        id_feature TEXT,
+        id_featuredetail TEXT,
+        id_featuresubdetail TEXT,
+        checklist INTEGER,
+        PRIMARY KEY (id_visit, id_feature, id_featuredetail, id_featuresubdetail)
+      )
+    ''');
+  }
+
+  /// Pakai ini kalau kamu perlu memaksa buka ulang koneksi
+  Future<void> reopen() async {
+    try {
+      await _database?.close();
+    } catch (_) {}
+    _database = null;
+    await database; // open again
   }
 
   // ==== PELANGGAN ====
@@ -128,14 +151,11 @@ class DatabaseHelper {
 
   Future<List<Pelanggan>> getAllPelanggan({String? fitur}) async {
     final db = await database;
-
-    // Jika fitur disediakan, tambahkan klausa WHERE
     final List<Map<String, dynamic>> maps = await db.query(
       'pelanggan',
       where: fitur != null ? 'fitur = ?' : null,
       whereArgs: fitur != null ? [fitur] : null,
     );
-
     return maps.map((e) => Pelanggan.fromMap(e)).toList();
   }
 
@@ -152,9 +172,20 @@ class DatabaseHelper {
   }
 
   Future<List<Sales>> getAllSales() async {
-    final db = await database;
-    final maps = await db.query('sales');
-    return maps.map((e) => Sales.fromMap(e)).toList();
+    // Tahan error database_closed → reopen & retry 1x
+    try {
+      final db = await database;
+      final rows = await db.query('sales');
+      return rows.map((e) => Sales.fromMap(e)).toList();
+    } on DatabaseException catch (e) {
+      if (e.toString().toLowerCase().contains('database_closed')) {
+        await reopen();
+        final db = await database;
+        final rows = await db.query('sales');
+        return rows.map((e) => Sales.fromMap(e)).toList();
+      }
+      rethrow;
+    }
   }
 
   // ==== FEATURE ====
@@ -353,16 +384,16 @@ class DatabaseHelper {
     return null;
   }
 
+  /// Penting: JANGAN menutup DB di sini. Cukup kosongkan tabel.
   Future<void> clearAllTables() async {
-    final db = await instance.database;
-    await db.delete('visit');
+    final db = await database;
     await db.delete('visit_checklist');
-    await db.delete('sales');
-    await db.delete('feature');
-    await db.delete('feature_detail');
+    await db.delete('visit');
     await db.delete('feature_subdetail');
+    await db.delete('feature_detail');
+    await db.delete('feature');
+    await db.delete('sales');
     await db.delete('pelanggan');
-
     // tambahkan tabel lain jika ada
   }
 
