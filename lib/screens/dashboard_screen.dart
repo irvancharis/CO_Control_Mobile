@@ -133,7 +133,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       }
 
       final prefs = await SharedPreferences.getInstance();
-      final kodeUser = prefs.getString('kodeUser') ?? '';
+      final kodeUser = prefs.getString('user_id') ?? '';
       final tanggalStr = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
       final fileName = '${kodeUser}_$tanggalStr.db';
 

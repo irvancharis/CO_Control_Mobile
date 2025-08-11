@@ -38,6 +38,10 @@ class _PelangganListScreenState extends State<PelangganListScreen> {
   String? lastNocall;
   final searchPelangganController = TextEditingController();
 
+  // ==== Tambahan untuk lock kunjungan aktif ====
+  String? activeVisitPelangganId;
+  Pelanggan? activeVisitPelanggan;
+
   @override
   void initState() {
     super.initState();
@@ -84,6 +88,7 @@ class _PelangganListScreenState extends State<PelangganListScreen> {
       final pelanggan = await PelangganService()
           .fetchAllPelangganLocal(fitur: widget.featureId);
       await loadVisitStatus(pelanggan);
+      await refreshActiveVisit(pelangganListOverride: pelanggan); // << tambah
 
       setState(() {
         selectedSales = sales;
@@ -200,8 +205,10 @@ class _PelangganListScreenState extends State<PelangganListScreen> {
       await DatabaseHelper.instance.clearAllTables();
 
       final prefs = await SharedPreferences.getInstance();
-      await prefs.remove('isSalesLocked'); // atau prefs.clear()
-      await prefs.remove('selectedSales');
+      await prefs.remove('isSalesLocked');
+      await prefs.remove('selectedSalesId');
+      await prefs.remove('selectedSalesCabang');
+      await prefs.remove('lastNocall');
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -283,10 +290,13 @@ class _PelangganListScreenState extends State<PelangganListScreen> {
         isLoading = false;
       });
 
-      // 5. Simpan state
+      // 5. Segarkan status kunjungan aktif
+      await refreshActiveVisit();
+
+      // 6. Simpan state
       await saveState();
 
-      // 6. Tampilkan notifikasi
+      // 7. Tampilkan notifikasi
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Pelanggan berhasil di-download')),
@@ -340,6 +350,34 @@ class _PelangganListScreenState extends State<PelangganListScreen> {
     return false; // batal: tetap di halaman ini
   }
 
+  // ==== Helper: deteksi kunjungan aktif (selesai null/kosong) ====
+  Future<void> refreshActiveVisit(
+      {List<Pelanggan>? pelangganListOverride}) async {
+    final visits = await DatabaseHelper.instance.getAllVisits();
+    String? id;
+    for (final v in visits) {
+      final selesai = v['selesai'];
+      if (selesai == null || selesai.toString().isEmpty) {
+        id = v['idpelanggan']?.toString();
+        break;
+      }
+    }
+
+    Pelanggan? p;
+    final sourceList = pelangganListOverride ?? pelangganList;
+    if (id != null) {
+      try {
+        p = sourceList.firstWhere((e) => e.id == id);
+      } catch (_) {}
+    }
+
+    if (!mounted) return;
+    setState(() {
+      activeVisitPelangganId = id;
+      activeVisitPelanggan = p;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return WillPopScope(
@@ -378,6 +416,8 @@ class _PelangganListScreenState extends State<PelangganListScreen> {
                                 filteredPelangganList = [];
                                 lastNocall = null;
                                 searchPelangganController.clear();
+                                activeVisitPelangganId = null;
+                                activeVisitPelanggan = null;
                               });
                             },
                             dropdownDecoratorProps:
@@ -408,6 +448,34 @@ class _PelangganListScreenState extends State<PelangganListScreen> {
                 ],
               ),
             ),
+
+            // Banner info jika ada kunjungan aktif
+            if (activeVisitPelangganId != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.amber[100],
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.amber),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.lock_clock),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Sedang kunjungan: ${activeVisitPelanggan?.nama ?? activeVisitPelangganId}',
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
             if (isSalesLocked && lastNocall != null)
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -456,11 +524,18 @@ class _PelangganListScreenState extends State<PelangganListScreen> {
                           final isSelesai =
                               visitStatusMap[pelanggan.id] ?? false;
 
-                          return Card(
+                          final isActiveVisitThis =
+                              (activeVisitPelangganId != null &&
+                                  pelanggan.id == activeVisitPelangganId);
+                          final isDisabled = (activeVisitPelangganId != null &&
+                              !isActiveVisitThis);
+
+                          final tile = Card(
                             color: isSelesai ? Colors.green[100] : null,
                             margin: const EdgeInsets.symmetric(
                                 horizontal: 10, vertical: 6),
                             child: ListTile(
+                              enabled: !isDisabled,
                               title: Text(
                                 pelanggan.nama,
                                 style: const TextStyle(
@@ -471,54 +546,74 @@ class _PelangganListScreenState extends State<PelangganListScreen> {
                                 ),
                               ),
                               subtitle: Text(pelanggan.alamat),
-                              trailing: isSelesai
-                                  ? const Icon(Icons.check_circle,
-                                      color: Colors.green)
-                                  : const Icon(Icons.chevron_right),
-                              onTap: () async {
-                                final isSelesai =
-                                    visitStatusMap[pelanggan.id] ?? false;
+                              trailing: isDisabled
+                                  ? const Icon(Icons.lock, color: Colors.grey)
+                                  : (isSelesai
+                                      ? const Icon(Icons.check_circle,
+                                          color: Colors.green)
+                                      : const Icon(Icons.chevron_right)),
+                              onTap: isDisabled
+                                  ? null
+                                  : () async {
+                                      final alreadySelesai =
+                                          visitStatusMap[pelanggan.id] ?? false;
 
-                                if (isSelesai) {
-                                  final lanjut = await showDialog<bool>(
-                                    context: context,
-                                    builder: (ctx) => AlertDialog(
-                                      title: const Text("Kunjungan Selesai"),
-                                      content: const Text(
-                                          "Pelanggan ini sudah selesai kunjungan. Apakah Anda ingin membuka kembali checklist-nya?"),
-                                      actions: [
-                                        TextButton(
-                                          onPressed: () =>
-                                              Navigator.of(ctx).pop(false),
-                                          child: const Text("Batal"),
+                                      if (alreadySelesai) {
+                                        final lanjut = await showDialog<bool>(
+                                          context: context,
+                                          builder: (ctx) => AlertDialog(
+                                            title:
+                                                const Text("Kunjungan Selesai"),
+                                            content: const Text(
+                                                "Pelanggan ini sudah selesai kunjungan. Apakah Anda ingin membuka kembali checklist-nya?"),
+                                            actions: [
+                                              TextButton(
+                                                onPressed: () =>
+                                                    Navigator.of(ctx)
+                                                        .pop(false),
+                                                child: const Text("Batal"),
+                                              ),
+                                              ElevatedButton(
+                                                onPressed: () =>
+                                                    Navigator.of(ctx).pop(true),
+                                                child: const Text("Lanjutkan"),
+                                              ),
+                                            ],
+                                          ),
+                                        );
+
+                                        if (lanjut != true) return;
+                                      }
+
+                                      await Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) =>
+                                              DetailFeatureChecklistScreen(
+                                            featureId: widget.featureId,
+                                            title: 'Checklist',
+                                            pelanggan: pelanggan,
+                                            featureType: widget.featureType,
+                                          ),
                                         ),
-                                        ElevatedButton(
-                                          onPressed: () =>
-                                              Navigator.of(ctx).pop(true),
-                                          child: const Text("Lanjutkan"),
-                                        ),
-                                      ],
-                                    ),
-                                  );
+                                      );
 
-                                  if (lanjut != true) return;
-                                }
-
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) =>
-                                        DetailFeatureChecklistScreen(
-                                      featureId: widget.featureId,
-                                      title: 'Checklist',
-                                      pelanggan: pelanggan,
-                                      featureType: widget.featureType,
-                                    ),
-                                  ),
-                                );
-                              },
+                                      // refresh status setelah balik
+                                      await loadVisitStatus(pelangganList);
+                                      await refreshActiveVisit();
+                                    },
                             ),
                           );
+
+                          return isDisabled
+                              ? Opacity(
+                                  opacity: 0.5,
+                                  child: IgnorePointer(
+                                    ignoring: true,
+                                    child: tile,
+                                  ),
+                                )
+                              : tile;
                         },
                       ),
               ),

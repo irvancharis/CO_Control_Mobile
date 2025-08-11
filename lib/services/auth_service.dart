@@ -18,8 +18,7 @@ class AuthService {
 
       // Ambil token & user ID dari response
       final token = data['token'];
-      final user = data['user']; // pastikan backend mengirim objek 'user'
-      final userId = user['id']; // misalnya: 'SPV001'
+      final userId = username; // misalnya: 'SPV001'
 
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('authToken', token);
