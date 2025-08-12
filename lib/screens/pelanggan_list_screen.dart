@@ -11,6 +11,30 @@ import '../services/submit_service.dart';
 import 'detail_feature_checklist_screen.dart';
 import 'dart:convert';
 
+// ======= Color & Style Tokens =======
+class _UX {
+  static const primary = Color(0xFF8E7CC3);
+  static const primaryDark = Color(0xFF6F5AA8);
+  static const primarySurface = Color(0xFFF0ECFA);
+  static const success = Color(0xFF2EAD54);
+  static const bg = Color(0xFFF7F1FF);
+  static const surface = Colors.white;
+  static const cardBorder = Color(0xFFE6E2F2);
+  static const textMuted = Color(0xFF7A7A7A);
+  static const disabledBg = Color(0xFFF2F2F6);
+  static const disabledText = Color(0xFF9A9AA2);
+  static const r12 = 12.0;
+  static const r16 = 16.0;
+  static const r999 = 999.0;
+
+  static InputBorder roundedBorder() => OutlineInputBorder(
+        borderRadius: BorderRadius.circular(r12),
+        borderSide: const BorderSide(color: Color(0xFFE1E1E8)),
+      );
+}
+
+enum _StatusFilter { all, belum, selesai }
+
 class PelangganListScreen extends StatefulWidget {
   final String featureId;
   final String title;
@@ -30,17 +54,23 @@ class PelangganListScreen extends StatefulWidget {
 class _PelangganListScreenState extends State<PelangganListScreen> {
   List<Sales> salesList = [];
   Sales? selectedSales;
+
   List<Pelanggan> pelangganList = [];
   List<Pelanggan> filteredPelangganList = [];
   Map<String, bool> visitStatusMap = {};
+
   bool isLoading = false;
   bool isSalesLocked = false;
+
   String? lastNocall;
   final searchPelangganController = TextEditingController();
 
-  // ==== Tambahan untuk lock kunjungan aktif ====
+  // Active-visit lock
   String? activeVisitPelangganId;
   Pelanggan? activeVisitPelanggan;
+
+  // Filter status ala segmented bar
+  _StatusFilter _filter = _StatusFilter.all;
 
   @override
   void initState() {
@@ -48,16 +78,54 @@ class _PelangganListScreenState extends State<PelangganListScreen> {
     loadSales();
   }
 
+  // ================= Helpers & Filters =================
+  void _applyFilters() {
+    final keyword = (searchPelangganController.text).toLowerCase().trim();
+    List<Pelanggan> base = List.from(pelangganList);
+
+    if (keyword.isNotEmpty) {
+      base = base.where((p) {
+        final n = (p.nama ?? '').toLowerCase();
+        final a = (p.alamat ?? '').toLowerCase();
+        final nc = (p.nocall ?? '').toString().toLowerCase();
+        return n.contains(keyword) ||
+            a.contains(keyword) ||
+            nc.contains(keyword);
+      }).toList();
+    }
+
+    if (_filter != _StatusFilter.all) {
+      final wantSelesai = _filter == _StatusFilter.selesai;
+      base = base
+          .where((p) => (visitStatusMap[p.id] ?? false) == wantSelesai)
+          .toList();
+    }
+
+    setState(() => filteredPelangganList = base);
+  }
+
+  String generateNocall(Sales sales) {
+    final now = DateTime.now();
+    final tanggal =
+        "${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}";
+    final idCabang = sales.idCabang;
+    final id = sales.id;
+    return "W${idCabang}_${id}_$tanggal";
+  }
+
+  // ================= Data Load & Persist =================
   Future<void> loadSales() async {
-    if (isLoading) return; // guard biar ga double load
+    if (isLoading) return; // guard
     setState(() => isLoading = true);
     try {
       final list = await DatabaseHelper.instance.getAllSales();
       if (!mounted) return;
+      // sort biar rapi
+      list.sort((a, b) =>
+          (a.nama ?? '').toLowerCase().compareTo((b.nama ?? '').toLowerCase()));
       setState(() {
         salesList = list;
       });
-      // lanjut restore state (tanpa ubah isLoading)
       await restoreState();
     } catch (e) {
       if (!mounted) return;
@@ -88,7 +156,7 @@ class _PelangganListScreenState extends State<PelangganListScreen> {
       final pelanggan = await PelangganService()
           .fetchAllPelangganLocal(fitur: widget.featureId);
       await loadVisitStatus(pelanggan);
-      await refreshActiveVisit(pelangganListOverride: pelanggan); // << tambah
+      await refreshActiveVisit(pelangganListOverride: pelanggan);
 
       setState(() {
         selectedSales = sales;
@@ -97,18 +165,7 @@ class _PelangganListScreenState extends State<PelangganListScreen> {
         pelangganList = pelanggan;
         filteredPelangganList = List.from(pelanggan);
       });
-    }
-  }
-
-  Future<void> loadVisitStatus(List<Pelanggan> pelangganList) async {
-    visitStatusMap.clear();
-    for (var pelanggan in pelangganList) {
-      final visit =
-          await DatabaseHelper.instance.getVisitByPelangganId(pelanggan.id);
-      final isSelesai = visit != null &&
-          visit['selesai'] != null &&
-          visit['selesai'].toString().isNotEmpty;
-      visitStatusMap[pelanggan.id] = isSelesai;
+      _applyFilters();
     }
   }
 
@@ -120,6 +177,104 @@ class _PelangganListScreenState extends State<PelangganListScreen> {
     }
     await prefs.setString('lastNocall', lastNocall ?? '');
     await prefs.setBool('isSalesLocked', isSalesLocked);
+  }
+
+  Future<void> loadVisitStatus(List<Pelanggan> list) async {
+    visitStatusMap.clear();
+    for (var pelanggan in list) {
+      final visit =
+          await DatabaseHelper.instance.getVisitByPelangganId(pelanggan.id);
+      final isSelesai = visit != null &&
+          visit['selesai'] != null &&
+          visit['selesai'].toString().isNotEmpty;
+      visitStatusMap[pelanggan.id] = isSelesai;
+    }
+  }
+
+  Future<void> loadAndDownloadPelanggan() async {
+    if (selectedSales == null) return;
+
+    setState(() {
+      isLoading = true;
+      pelangganList = [];
+      filteredPelangganList = [];
+      lastNocall = generateNocall(selectedSales!);
+    });
+
+    try {
+      // 1) Download & simpan
+      final nocall = lastNocall ?? generateNocall(selectedSales!);
+      await PelangganService().downloadAndSavePelanggan(
+        nocall,
+        widget.featureId,
+      );
+
+      // 2) Ambil lokal
+      final downloaded = await PelangganService()
+          .fetchAllPelangganLocal(fitur: widget.featureId);
+
+      await loadVisitStatus(downloaded);
+
+      // 3) Jika kosong → refresh penuh
+      if (downloaded.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              duration: Duration(seconds: 3),
+              behavior: SnackBarBehavior.floating,
+              backgroundColor: Color.fromARGB(255, 126, 8, 0),
+              content: Text(
+                'Data pelanggan kosong, halaman akan di-refresh',
+                style: TextStyle(color: Colors.white),
+              ),
+            ),
+          );
+
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (_) => PelangganListScreen(
+                featureId: widget.featureId,
+                title: widget.title,
+                featureType: widget.featureType,
+              ),
+            ),
+          );
+        }
+        return;
+      }
+
+      // 4) Update state
+      setState(() {
+        pelangganList = downloaded;
+        filteredPelangganList = List.from(downloaded);
+        isSalesLocked = true;
+        isLoading = false;
+      });
+
+      // 5) Refresh active visit
+      await refreshActiveVisit();
+
+      // 6) Simpan state
+      await saveState();
+
+      // 7) Notifikasi
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Pelanggan berhasil di-download')),
+        );
+      }
+
+      _applyFilters();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Gagal download: $e')),
+        );
+      }
+
+      setState(() => isLoading = false);
+    }
   }
 
   Future<void> submitSemuaData() async {
@@ -140,7 +295,6 @@ class _PelangganListScreenState extends State<PelangganListScreen> {
         final checklist = groupedChecklist[visitId] ?? [];
 
         final Map<String, FeatureDetail> detailMap = {};
-
         for (final row in checklist) {
           final idDetail = row['id_featuredetail'];
           final idSub = row['id_featuresubdetail'];
@@ -201,7 +355,6 @@ class _PelangganListScreenState extends State<PelangganListScreen> {
         }
       }
 
-      // Bersihkan database dan shared preferences
       await DatabaseHelper.instance.clearAllTables();
 
       final prefs = await SharedPreferences.getInstance();
@@ -214,8 +367,6 @@ class _PelangganListScreenState extends State<PelangganListScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Semua data berhasil dikirim')),
         );
-
-        // Kembali ke Dashboard & bersihkan stack
         Navigator.of(context)
             .pushNamedAndRemoveUntil('/dashboard', (route) => false);
       }
@@ -230,127 +381,7 @@ class _PelangganListScreenState extends State<PelangganListScreen> {
     }
   }
 
-  Future<void> loadAndDownloadPelanggan() async {
-    if (selectedSales == null) return;
-
-    setState(() {
-      isLoading = true;
-      pelangganList = [];
-      filteredPelangganList = [];
-      lastNocall = generateNocall(selectedSales!);
-    });
-
-    try {
-      // 1. Download pelanggan dari server
-      await PelangganService().downloadAndSavePelanggan(
-        lastNocall!,
-        widget.featureId,
-      );
-
-      // 2. Ambil dari lokal
-      final downloaded = await PelangganService()
-          .fetchAllPelangganLocal(fitur: widget.featureId);
-
-      await loadVisitStatus(downloaded);
-
-      // 3. Kalau kosong → refresh halaman penuh
-      if (downloaded.isEmpty) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              duration: Duration(seconds: 3),
-              behavior: SnackBarBehavior.floating,
-              backgroundColor: Color.fromARGB(255, 126, 8, 0),
-              content: Text(
-                'Data pelanggan kosong, halaman akan di-refresh',
-                style: TextStyle(color: Colors.white),
-              ),
-            ),
-          );
-
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(
-              builder: (context) => PelangganListScreen(
-                featureId: widget.featureId,
-                title: 'Pelanggan',
-                featureType: widget.featureType,
-              ),
-            ),
-          );
-        }
-        return;
-      }
-
-      // 4. Jika ada pelanggan, update state
-      setState(() {
-        pelangganList = downloaded;
-        filteredPelangganList = List.from(downloaded);
-        isSalesLocked = true;
-        isLoading = false;
-      });
-
-      // 5. Segarkan status kunjungan aktif
-      await refreshActiveVisit();
-
-      // 6. Simpan state
-      await saveState();
-
-      // 7. Tampilkan notifikasi
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Pelanggan berhasil di-download')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Gagal download: $e')),
-        );
-      }
-
-      setState(() => isLoading = false);
-    }
-  }
-
-  String generateNocall(Sales sales) {
-    final now = DateTime.now();
-    final tanggal =
-        "${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}";
-    return "W${sales.idCabang}_${sales.id}_$tanggal";
-  }
-
-  // ====== DIALOG KONFIRMASI BACK TANPA APPBAR ======
-  Future<bool> _handleWillPop() async {
-    final keluar = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Konfirmasi'),
-        content: const Text('Yakin ingin kembali ke Dashboard?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Tidak'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Iya'),
-          ),
-        ],
-      ),
-    );
-
-    if (keluar == true) {
-      if (mounted) {
-        Navigator.of(context)
-            .pushNamed('/dashboard', arguments: widget.featureId);
-      }
-      return false; // kita handle manual navigasinya
-    }
-    return false; // batal: tetap di halaman ini
-  }
-
-  // ==== Helper: deteksi kunjungan aktif (selesai null/kosong) ====
+  // ============ Active-visit detect ============
   Future<void> refreshActiveVisit(
       {List<Pelanggan>? pelangganListOverride}) async {
     final visits = await DatabaseHelper.instance.getAllVisits();
@@ -378,265 +409,773 @@ class _PelangganListScreenState extends State<PelangganListScreen> {
     });
   }
 
+  // ============ Back confirm (tanpa AppBar) ============
+  Future<bool> _handleWillPop() async {
+    final keluar = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Konfirmasi'),
+        content: const Text('Yakin ingin kembali ke Dashboard?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Tidak'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Iya'),
+          ),
+        ],
+      ),
+    );
+
+    if (keluar == true) {
+      if (mounted) {
+        Navigator.of(context)
+            .pushNamed('/dashboard', arguments: widget.featureId);
+      }
+      return false;
+    }
+    return false;
+  }
+
   @override
   Widget build(BuildContext context) {
     return WillPopScope(
-      onWillPop: _handleWillPop, // intercept tombol back Android
+      onWillPop: _handleWillPop,
       child: Scaffold(
-        // TANPA APPBAR
-        body: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(12),
-              child: Row(
-                children: [
-                  // Bagian Sales: label jika terkunci, dropdown jika belum
-                  Expanded(
-                    child: isSalesLocked
-                        ? Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 18),
-                            decoration: BoxDecoration(
-                              border: Border.all(color: Colors.grey),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              "${selectedSales?.kodeSales ?? ''} - ${selectedSales?.nama ?? ''}",
-                              style: const TextStyle(fontSize: 16),
-                            ),
-                          )
-                        : DropdownSearch<Sales>(
-                            selectedItem: selectedSales,
-                            items: salesList,
-                            itemAsString: (s) => "${s.kodeSales} - ${s.nama}",
-                            onChanged: (s) {
-                              setState(() {
-                                selectedSales = s;
-                                pelangganList = [];
-                                filteredPelangganList = [];
-                                lastNocall = null;
-                                searchPelangganController.clear();
-                                activeVisitPelangganId = null;
-                                activeVisitPelanggan = null;
-                              });
-                            },
-                            dropdownDecoratorProps:
-                                const DropDownDecoratorProps(
-                              dropdownSearchDecoration: InputDecoration(
-                                labelText: 'Pilih Sales',
-                                border: OutlineInputBorder(),
-                              ),
-                            ),
-                          ),
-                  ),
-
-                  const SizedBox(width: 8),
-
-                  // Tombol hanya muncul jika belum terkunci
-                  if (!isSalesLocked && !isLoading && selectedSales != null)
-                    ElevatedButton.icon(
-                      onPressed: () async {
-                        await loadAndDownloadPelanggan(); // Panggil fungsi download
-                        setState(() {
-                          isSalesLocked =
-                              true; // Kunci tampilan setelah download
-                        });
-                      },
-                      icon: const Icon(Icons.download),
-                      label: const Text('Download'),
-                    ),
-                ],
-              ),
-            ),
-
-            // Banner info jika ada kunjungan aktif
-            if (activeVisitPelangganId != null)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-                child: Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.amber[100],
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.amber),
-                  ),
+        backgroundColor: _UX.bg,
+        body: RefreshIndicator(
+          onRefresh: () async {
+            if (isSalesLocked && selectedSales != null) {
+              await loadAndDownloadPelanggan();
+            }
+          },
+          child: CustomScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            slivers: [
+              // ======= Top: Sales + Download =======
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 28, left: 16, right: 16),
                   child: Row(
                     children: [
-                      const Icon(Icons.lock_clock),
-                      const SizedBox(width: 8),
                       Expanded(
-                        child: Text(
-                          'Sedang kunjungan: ${activeVisitPelanggan?.nama ?? activeVisitPelangganId}',
-                          style: const TextStyle(fontWeight: FontWeight.w600),
-                          overflow: TextOverflow.ellipsis,
-                        ),
+                        child: isSalesLocked
+                            ? _LockedField(
+                                value:
+                                    "${selectedSales?.kodeSales ?? '-'} - ${selectedSales?.nama ?? '-'}",
+                              )
+                            : DropdownSearch<Sales>(
+                                selectedItem: selectedSales,
+                                items: salesList,
+                                itemAsString: (s) =>
+                                    "${s.kodeSales ?? '-'} - ${s.nama ?? '-'}",
+                                onChanged: (s) {
+                                  setState(() {
+                                    selectedSales = s;
+                                    pelangganList = [];
+                                    filteredPelangganList = [];
+                                    lastNocall = null;
+                                    searchPelangganController.clear();
+                                    activeVisitPelangganId = null;
+                                    activeVisitPelanggan = null;
+                                  });
+                                },
+                                dropdownDecoratorProps:
+                                    const DropDownDecoratorProps(
+                                  dropdownSearchDecoration: InputDecoration(
+                                    labelText: 'Pilih Sales',
+                                    prefixIcon: Icon(Icons.person_search),
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.all(
+                                          Radius.circular(_UX.r12)),
+                                    ),
+                                  ),
+                                ),
+                                popupProps: PopupProps.menu(
+                                  showSearchBox: true,
+                                  searchFieldProps: TextFieldProps(
+                                    decoration: InputDecoration(
+                                      hintText: 'Cari sales (kode/nama)…',
+                                      prefixIcon: const Icon(Icons.search),
+                                      border: _UX.roundedBorder(),
+                                      contentPadding:
+                                          const EdgeInsets.symmetric(
+                                              horizontal: 12, vertical: 10),
+                                    ),
+                                  ),
+                                  emptyBuilder: (ctx, _) => const Padding(
+                                    padding: EdgeInsets.all(16),
+                                    child: Text('Tidak ada hasil'),
+                                  ),
+                                ),
+                                compareFn: (a, b) =>
+                                    a.id == b.id && a.idCabang == b.idCabang,
+                                filterFn: (s, q) {
+                                  final k = (q ?? '').toLowerCase();
+                                  final nama = (s.nama ?? '').toLowerCase();
+                                  final kode =
+                                      (s.kodeSales ?? '').toLowerCase();
+                                  return nama.contains(k) || kode.contains(k);
+                                },
+                              ),
                       ),
+                      const SizedBox(width: 10),
+                      if (!isSalesLocked && !isLoading && selectedSales != null)
+                        FilledButton.icon(
+                          onPressed: () async {
+                            await loadAndDownloadPelanggan();
+                            setState(() => isSalesLocked = true);
+                          },
+                          icon: const Icon(Icons.download),
+                          label: const Text('Download'),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: _UX.primary,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 14, vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(_UX.r12),
+                            ),
+                          ),
+                        ),
                     ],
                   ),
                 ),
               ),
 
-            if (isSalesLocked && lastNocall != null)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text("JUMLAH: ${filteredPelangganList.length}",
-                        style: const TextStyle(fontWeight: FontWeight.bold)),
-                    Text("NOCALL: $lastNocall",
-                        style: const TextStyle(fontWeight: FontWeight.bold)),
-                  ],
-                ),
-              ),
-            if (isSalesLocked)
-              Padding(
-                padding: const EdgeInsets.all(12),
-                child: TextField(
-                  controller: searchPelangganController,
-                  onChanged: (q) {
-                    final keyword = q.toLowerCase();
-                    setState(() {
-                      filteredPelangganList = pelangganList.where((p) {
-                        return p.nama.toLowerCase().contains(keyword) ||
-                            p.alamat.toLowerCase().contains(keyword) ||
-                            p.nocall.toLowerCase().contains(keyword);
-                      }).toList();
-                    });
-                  },
-                  decoration: const InputDecoration(
-                    labelText: 'Cari pelanggan',
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.search),
+              // ======= Active visit banner =======
+              if (activeVisitPelangganId != null)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
+                    child: _ActiveVisitBanner(
+                      text:
+                          'Sedang kunjungan: ${activeVisitPelanggan?.nama ?? activeVisitPelangganId}',
+                    ),
                   ),
                 ),
-              ),
-            if (isLoading)
-              const Expanded(child: Center(child: CircularProgressIndicator()))
-            else
-              Expanded(
-                child: filteredPelangganList.isEmpty
-                    ? const Center(child: Text("Tidak ada pelanggan"))
-                    : ListView.builder(
-                        itemCount: filteredPelangganList.length,
-                        itemBuilder: (context, index) {
-                          final pelanggan = filteredPelangganList[index];
-                          final isSelesai =
-                              visitStatusMap[pelanggan.id] ?? false;
 
-                          final isActiveVisitThis =
-                              (activeVisitPelangganId != null &&
-                                  pelanggan.id == activeVisitPelangganId);
-                          final isDisabled = (activeVisitPelangganId != null &&
-                              !isActiveVisitThis);
+              // ======= Chips info =======
+              if (isSalesLocked && (lastNocall ?? '').isNotEmpty)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        _InfoChip(
+                          icon: Icons.group,
+                          label: 'Jumlah',
+                          value: '${filteredPelangganList.length}',
+                        ),
+                        _InfoChip(
+                          icon: Icons.confirmation_number,
+                          label: 'NoCall',
+                          value: lastNocall!,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
 
-                          final tile = Card(
-                            color: isSelesai ? Colors.green[100] : null,
-                            margin: const EdgeInsets.symmetric(
-                                horizontal: 10, vertical: 6),
-                            child: ListTile(
-                              enabled: !isDisabled,
-                              title: Text(
-                                pelanggan.nama,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
-                                  color: Colors.black,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                              subtitle: Text(pelanggan.alamat),
-                              trailing: isDisabled
-                                  ? const Icon(Icons.lock, color: Colors.grey)
-                                  : (isSelesai
-                                      ? const Icon(Icons.check_circle,
-                                          color: Colors.green)
-                                      : const Icon(Icons.chevron_right)),
-                              onTap: isDisabled
-                                  ? null
-                                  : () async {
-                                      final alreadySelesai =
-                                          visitStatusMap[pelanggan.id] ?? false;
+              // ======= Sticky search pelanggan =======
+              if (isSalesLocked)
+                SliverPersistentHeader(
+                  pinned: true,
+                  delegate: _SearchHeaderDelegate(
+                    controller: searchPelangganController,
+                    onChanged: (_) => _applyFilters(),
+                  ),
+                ),
 
-                                      if (alreadySelesai) {
-                                        final lanjut = await showDialog<bool>(
-                                          context: context,
-                                          builder: (ctx) => AlertDialog(
-                                            title:
-                                                const Text("Kunjungan Selesai"),
-                                            content: const Text(
-                                                "Pelanggan ini sudah selesai kunjungan. Apakah Anda ingin membuka kembali checklist-nya?"),
-                                            actions: [
-                                              TextButton(
-                                                onPressed: () =>
-                                                    Navigator.of(ctx)
-                                                        .pop(false),
-                                                child: const Text("Batal"),
-                                              ),
-                                              ElevatedButton(
-                                                onPressed: () =>
-                                                    Navigator.of(ctx).pop(true),
-                                                child: const Text("Lanjutkan"),
-                                              ),
-                                            ],
-                                          ),
-                                        );
+              // ======= Segmented filter =======
+              if (isSalesLocked)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                    child: _SegmentedFilterBar(
+                      current: _filter,
+                      onChanged: (f) {
+                        setState(() => _filter = f);
+                        _applyFilters();
+                      },
+                    ),
+                  ),
+                ),
 
-                                        if (lanjut != true) return;
-                                      }
-
-                                      await Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (_) =>
-                                              DetailFeatureChecklistScreen(
-                                            featureId: widget.featureId,
-                                            title: 'Checklist',
-                                            pelanggan: pelanggan,
-                                            featureType: widget.featureType,
-                                          ),
-                                        ),
-                                      );
-
-                                      // refresh status setelah balik
-                                      await loadVisitStatus(pelangganList);
-                                      await refreshActiveVisit();
-                                    },
-                            ),
-                          );
-
-                          return isDisabled
-                              ? Opacity(
-                                  opacity: 0.5,
-                                  child: IgnorePointer(
-                                    ignoring: true,
-                                    child: tile,
-                                  ),
-                                )
-                              : tile;
-                        },
+              // ======= List / Empty =======
+              if (isLoading)
+                const SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: Center(child: CircularProgressIndicator()),
+                )
+              else if (filteredPelangganList.isEmpty)
+                SliverToBoxAdapter(
+                  child: SizedBox(
+                    height: MediaQuery.of(context).size.height * 0.4,
+                    child: const Center(
+                      child: Text(
+                        'Tidak ada pelanggan',
+                        style: TextStyle(color: _UX.textMuted),
                       ),
-              ),
-          ],
+                    ),
+                  ),
+                )
+              else
+                SliverList.builder(
+                  itemCount: filteredPelangganList.length,
+                  itemBuilder: (context, index) {
+                    final p = filteredPelangganList[index];
+                    final isSelesai = (visitStatusMap[p.id] ?? false);
+
+                    final isActiveVisitThis = (activeVisitPelangganId != null &&
+                        p.id == activeVisitPelangganId);
+                    final isDisabled =
+                        (activeVisitPelangganId != null && !isActiveVisitThis);
+
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 6),
+                      child: _PelangganCard(
+                        index: index + 1,
+                        pelanggan: p,
+                        isSelesai: isSelesai,
+                        isDisabled: isDisabled,
+                        isActiveVisit: isActiveVisitThis,
+                        onTap: isDisabled
+                            ? null
+                            : () async {
+                                if (isSelesai) {
+                                  final lanjut = await showDialog<bool>(
+                                    context: context,
+                                    builder: (ctx) => AlertDialog(
+                                      title: const Text("Kunjungan Selesai"),
+                                      content: const Text(
+                                          "Pelanggan ini sudah selesai kunjungan. Buka kembali checklist?"),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () =>
+                                              Navigator.of(ctx).pop(false),
+                                          child: const Text("Batal"),
+                                        ),
+                                        ElevatedButton(
+                                          onPressed: () =>
+                                              Navigator.of(ctx).pop(true),
+                                          child: const Text("Lanjutkan"),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                  if (lanjut != true) return;
+                                }
+
+                                await Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) =>
+                                        DetailFeatureChecklistScreen(
+                                      featureId: widget.featureId,
+                                      title: 'Checklist',
+                                      pelanggan: p,
+                                      featureType: widget.featureType,
+                                    ),
+                                  ),
+                                );
+
+                                await loadVisitStatus(pelangganList);
+                                _applyFilters();
+                                await refreshActiveVisit();
+                              },
+                      ),
+                    );
+                  },
+                ),
+
+              const SliverToBoxAdapter(
+                  child: SizedBox(height: 86)), // space for bottom bar
+            ],
+          ),
         ),
         bottomNavigationBar: isSalesLocked
             ? SafeArea(
                 child: Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
                   child: ElevatedButton.icon(
                     onPressed: isLoading ? null : submitSemuaData,
                     icon: const Icon(Icons.cloud_upload),
                     label: const Text('Selesai & Upload Semua'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green,
-                      minimumSize: const Size.fromHeight(50),
+                      backgroundColor: _UX.success,
                       foregroundColor: Colors.white,
+                      minimumSize: const Size.fromHeight(56),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(32),
+                      ),
+                      elevation: 2,
                     ),
                   ),
                 ),
               )
             : null,
+      ),
+    );
+  }
+}
+
+// ================== Reusable & Styled Widgets ==================
+class _LockedField extends StatelessWidget {
+  final String value;
+  const _LockedField({required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 18),
+      decoration: BoxDecoration(
+        border: Border.all(color: _UX.cardBorder),
+        borderRadius: BorderRadius.circular(_UX.r12),
+        color: _UX.surface,
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.lock, color: _UX.primaryDark),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _InfoChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+  const _InfoChip(
+      {required this.icon, required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(_UX.r999),
+        color: _UX.primarySurface,
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 18, color: _UX.primaryDark),
+          const SizedBox(width: 6),
+          Text('$label: ', style: const TextStyle(color: _UX.textMuted)),
+          Text(
+            value,
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ActiveVisitBanner extends StatelessWidget {
+  final String text;
+  const _ActiveVisitBanner({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.amber[100],
+        borderRadius: BorderRadius.circular(_UX.r16),
+        border: Border.all(color: Colors.amber),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.lock_clock, color: Colors.black87),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(fontWeight: FontWeight.w600),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SearchHeaderDelegate extends SliverPersistentHeaderDelegate {
+  final TextEditingController controller;
+  final ValueChanged<String> onChanged;
+
+  _SearchHeaderDelegate({
+    required this.controller,
+    required this.onChanged,
+  });
+
+  @override
+  double get minExtent => 76; // tinggi konsisten
+  @override
+  double get maxExtent => 76;
+
+  @override
+  Widget build(
+      BuildContext context, double shrinkOffset, bool overlapsContent) {
+    // Penting: expand supaya paintExtent >= layoutExtent
+    return SizedBox.expand(
+      child: Material(
+        elevation: overlapsContent ? 2 : 0,
+        color: _UX.bg,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
+          child: TextField(
+            controller: controller,
+            onChanged: onChanged,
+            decoration: InputDecoration(
+              labelText: 'Cari pelanggan (nama/alamat/nocall)',
+              prefixIcon: const Icon(Icons.search),
+              filled: true,
+              fillColor: Colors.white,
+              border: _UX.roundedBorder(),
+              enabledBorder: _UX.roundedBorder(),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide:
+                    const BorderSide(color: _UX.primaryDark, width: 1.4),
+              ),
+              isDense: true,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  bool shouldRebuild(covariant _SearchHeaderDelegate oldDelegate) => false;
+}
+
+class _SegmentedFilterBar extends StatelessWidget {
+  final _StatusFilter current;
+  final ValueChanged<_StatusFilter> onChanged;
+
+  const _SegmentedFilterBar({
+    required this.current,
+    required this.onChanged,
+  });
+
+  Widget _seg({
+    required bool selected,
+    required IconData icon,
+    required String text,
+    required VoidCallback onTap,
+  }) {
+    return Expanded(
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(_UX.r999),
+        child: Container(
+          height: 44,
+          decoration: BoxDecoration(
+            color: selected ? _UX.primary : Colors.transparent,
+            borderRadius: BorderRadius.circular(_UX.r999),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon,
+                  size: 18, color: selected ? Colors.white : _UX.primaryDark),
+              const SizedBox(width: 6),
+              Text(
+                text,
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  color: selected ? Colors.white : _UX.primaryDark,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 48,
+      decoration: BoxDecoration(
+        color: _UX.primarySurface,
+        borderRadius: BorderRadius.circular(_UX.r999),
+      ),
+      padding: const EdgeInsets.all(2),
+      child: Row(
+        children: [
+          _seg(
+            selected: current == _StatusFilter.all,
+            icon: Icons.list,
+            text: 'Semua',
+            onTap: () => onChanged(_StatusFilter.all),
+          ),
+          _seg(
+            selected: current == _StatusFilter.belum,
+            icon: Icons.badge,
+            text: 'Belum',
+            onTap: () => onChanged(_StatusFilter.belum),
+          ),
+          _seg(
+            selected: current == _StatusFilter.selesai,
+            icon: Icons.check_circle,
+            text: 'Selesai',
+            onTap: () => onChanged(_StatusFilter.selesai),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PelangganCard extends StatelessWidget {
+  final int index;
+  final Pelanggan pelanggan;
+  final bool isSelesai;
+  final bool isDisabled;
+  final bool isActiveVisit;
+  final VoidCallback? onTap;
+
+  const _PelangganCard({
+    required this.index,
+    required this.pelanggan,
+    required this.isSelesai,
+    required this.isDisabled,
+    required this.isActiveVisit,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final title =
+        "${pelanggan.nama ?? '-'}  - ${(pelanggan.nocall ?? '').toString()}";
+    final alamat = (pelanggan.alamat ?? '').toString();
+
+    final Color cardBg = isDisabled ? _UX.disabledBg : Colors.white;
+    final Color borderColor = isDisabled
+        ? const Color(0xFFE4E4EA)
+        : (isSelesai ? const Color(0xFFD9F2E3) : _UX.cardBorder);
+    final TextStyle titleStyle = TextStyle(
+      fontWeight: FontWeight.w700,
+      fontSize: 14.5,
+      color: isDisabled ? _UX.disabledText : Colors.black,
+    );
+    final TextStyle subStyle = TextStyle(
+      color: isDisabled ? _UX.disabledText : _UX.textMuted,
+    );
+
+    return Semantics(
+      enabled: !isDisabled,
+      label: '${pelanggan.nama ?? 'Pelanggan'}',
+      hint:
+          isDisabled ? 'Terkunci karena ada kunjungan aktif' : 'Buka checklist',
+      child: Tooltip(
+        message: isDisabled
+            ? 'Terkunci karena ada kunjungan aktif: hanya pelanggan yang aktif yang bisa dibuka'
+            : (isActiveVisit ? 'Sedang dikunjungi' : ''),
+        triggerMode: TooltipTriggerMode.tap,
+        child: Stack(
+          children: [
+            Material(
+              color: Colors.transparent,
+              child: Ink(
+                decoration: BoxDecoration(
+                  color: cardBg,
+                  borderRadius: BorderRadius.circular(_UX.r16),
+                  border: Border.all(color: borderColor),
+                  boxShadow: isDisabled
+                      ? []
+                      : [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.03),
+                            blurRadius: 8,
+                            offset: const Offset(0, 3),
+                          ),
+                        ],
+                ),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(_UX.r16),
+                  onTap: onTap,
+                  splashColor: isDisabled ? Colors.transparent : null,
+                  highlightColor: isDisabled ? Colors.transparent : null,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+                    child: Row(
+                      children: [
+                        // Index bubble
+                        CircleAvatar(
+                          radius: 16,
+                          backgroundColor: isDisabled
+                              ? const Color(0xFFEDEDF1)
+                              : _UX.primarySurface,
+                          child: Text(
+                            '$index',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              color: isDisabled
+                                  ? _UX.disabledText
+                                  : _UX.primaryDark,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        // Texts
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: titleStyle,
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                alamat,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: subStyle,
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        // Right pills
+                        if (isDisabled)
+                          const _LockPill()
+                        else if (isActiveVisit)
+                          const _ActivePill()
+                        else
+                          _StatusPill(isSelesai: isSelesai),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _StatusPill extends StatelessWidget {
+  final bool isSelesai;
+  const _StatusPill({required this.isSelesai});
+
+  @override
+  Widget build(BuildContext context) {
+    if (isSelesai) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: const Color(0xFFE7F5EC),
+          borderRadius: BorderRadius.circular(_UX.r999),
+          border: Border.all(color: const Color(0xFFBDE5CE)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: const [
+            Icon(Icons.check, size: 18, color: Color(0xFF2EAD54)),
+            SizedBox(width: 6),
+            Text('Selesai',
+                style: TextStyle(
+                    color: Color(0xFF2EAD54), fontWeight: FontWeight.w700)),
+          ],
+        ),
+      );
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: _UX.primarySurface,
+        borderRadius: BorderRadius.circular(_UX.r999),
+        border: Border.all(color: _UX.primary),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: const [
+          Icon(Icons.play_arrow_rounded, size: 18, color: _UX.primaryDark),
+          SizedBox(width: 6),
+          Text('Mulai',
+              style: TextStyle(
+                  color: _UX.primaryDark, fontWeight: FontWeight.w700)),
+        ],
+      ),
+    );
+  }
+}
+
+// Pill untuk item terkunci (non-aktif)
+class _LockPill extends StatelessWidget {
+  const _LockPill();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEDEDF1),
+        borderRadius: BorderRadius.circular(_UX.r999),
+        border: Border.all(color: const Color(0xFFD9D9E1)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: const [
+          Icon(Icons.lock, size: 18, color: _UX.disabledText),
+          SizedBox(width: 6),
+          Text('Terkunci',
+              style: TextStyle(
+                  color: _UX.disabledText, fontWeight: FontWeight.w700)),
+        ],
+      ),
+    );
+  }
+}
+
+// Pill untuk item yang sedang aktif dikunjungi
+class _ActivePill extends StatelessWidget {
+  const _ActivePill();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Color(0xFFFFF3CD),
+        borderRadius: BorderRadius.circular(_UX.r999),
+        border: Border.all(color: Color(0xFFFFEEA9)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: const [
+          Icon(Icons.lock_clock, size: 18, color: Color(0xFF8A6D3B)),
+          SizedBox(width: 6),
+          Text('Sedang dikunjungi',
+              style: TextStyle(
+                  color: Color(0xFF8A6D3B), fontWeight: FontWeight.w700)),
+        ],
       ),
     );
   }

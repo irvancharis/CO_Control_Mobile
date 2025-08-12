@@ -12,6 +12,28 @@ import '../services/submit_visit_service.dart';
 import 'pelanggan_list_screen.dart';
 import 'pelanggan_list_custom_screen.dart';
 
+// ======= Color & Style Tokens (selaras dengan list screen) =======
+class _UX {
+  static const primary = Color(0xFF8E7CC3);
+  static const primaryDark = Color(0xFF6F5AA8);
+  static const primarySurface = Color(0xFFF0ECFA);
+  static const success = Color(0xFF2EAD54);
+  static const bg = Color(0xFFF7F1FF);
+  static const surface = Colors.white;
+  static const cardBorder = Color(0xFFE6E2F2);
+  static const textMuted = Color(0xFF7A7A7A);
+  static const danger = Color(0xFFD9534F);
+  static const r10 = 10.0;
+  static const r12 = 12.0;
+  static const r16 = 16.0;
+  static const r999 = 999.0;
+
+  static InputBorder roundedBorder() => OutlineInputBorder(
+        borderRadius: BorderRadius.circular(r12),
+        borderSide: const BorderSide(color: Color(0xFFE1E1E8)),
+      );
+}
+
 class DetailFeatureChecklistScreen extends StatefulWidget {
   final String featureId;
   final String title;
@@ -48,14 +70,14 @@ class _DetailFeatureChecklistScreenState
   void initState() {
     super.initState();
     mulai = DateTime.now();
-    catatanController = TextEditingController(); // Inisialisasi dulu
+    catatanController = TextEditingController();
     getSpvFromPrefs().then((_) => checkOrCreateVisit());
     getCurrentLocation();
   }
 
   @override
   void dispose() {
-    catatanController.dispose(); // Wajib dispose
+    catatanController.dispose();
     super.dispose();
   }
 
@@ -102,23 +124,21 @@ class _DetailFeatureChecklistScreenState
       );
     }
 
-    await _loadCatatanFromDB(); // Panggil setelah visitId tersedia
+    await _loadCatatanFromDB();
     await loadChecklist();
   }
 
   Future<void> _loadCatatanFromDB() async {
     final result = await DatabaseHelper.instance.getCatatanByVisitId(visitId);
-    if (mounted) {
-      setState(() {
-        catatan = result ?? '';
-        catatanController.text = catatan;
-      });
-    }
+    if (!mounted) return;
+    setState(() {
+      catatan = result ?? '';
+      catatanController.text = catatan;
+    });
   }
 
   Future<void> loadChecklist() async {
     setState(() => isLoadingChecklist = true);
-
     try {
       final localDetails = await DatabaseHelper.instance.getChecklistDetail(
         idVisit: visitId,
@@ -129,7 +149,7 @@ class _DetailFeatureChecklistScreenState
           .getFeatureDetailsWithSubDetailByFeatureId(widget.featureId);
 
       if (localDetails.isNotEmpty) {
-        final checkedMap = {
+        final Map<String, bool> checkedMap = {
           for (var row in localDetails)
             '${row['id_featuredetail']}_${row['id_featuresubdetail']}':
                 row['checklist'] == 1
@@ -143,12 +163,14 @@ class _DetailFeatureChecklistScreenState
         }
       }
 
+      if (!mounted) return;
       setState(() {
         _details = details;
         isLoadingChecklist = false;
       });
     } catch (e) {
       debugPrint('loadChecklist error: $e');
+      if (!mounted) return;
       setState(() => isLoadingChecklist = false);
     }
   }
@@ -167,65 +189,11 @@ class _DetailFeatureChecklistScreenState
     }
   }
 
-  IconData getIconData(String iconName) {
-    switch (iconName) {
-      case 'dashboard':
-        return Icons.dashboard;
-      case 'visit':
-        return Icons.location_on;
-      case 'call':
-        return Icons.call;
-      case 'report':
-        return Icons.insert_chart;
-      default:
-        return Icons.extension;
-    }
-  }
-
-  Widget buildChecklist(FeatureDetail detail) {
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            ListTile(
-              leading: Icon(getIconData(detail.icon), color: Colors.blue),
-              title: Text(detail.nama,
-                  style: const TextStyle(
-                      fontWeight: FontWeight.w600, fontSize: 16)),
-            ),
-            if (detail.subDetails.isNotEmpty) const Divider(height: 0),
-            ...detail.subDetails.map((sub) {
-              return CheckboxListTile(
-                title: Text(sub.nama),
-                value: sub.isChecked,
-                onChanged: (val) async {
-                  setState(() => sub.isChecked = val ?? false);
-                  await DatabaseHelper.instance.upsertChecklistDetail(
-                    idVisit: visitId,
-                    idFeature: widget.featureId,
-                    idFeatureDetail: detail.id,
-                    idFeatureSubDetail: sub.id,
-                    isChecked: sub.isChecked,
-                  );
-                },
-                controlAffinity: ListTileControlAffinity.leading,
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 24, vertical: 0),
-              );
-            }).toList(),
-          ],
-        ),
-      ),
-    );
-  }
-
   Future<void> submitChecklist() async {
-    if (idSpv == null || latitude == null || longitude == null) {
+    if (idSpv == null ||
+        latitude == null ||
+        longitude == null ||
+        mulai == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Data supervisor/posisi belum lengkap!')),
       );
@@ -253,7 +221,6 @@ class _DetailFeatureChecklistScreenState
     if (!mounted) return;
     setState(() => isSubmitting = false);
 
-    // Pesan sukses
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('Checklist berhasil disimpan secara lokal'),
@@ -261,7 +228,6 @@ class _DetailFeatureChecklistScreenState
       ),
     );
 
-    // Tentukan halaman tujuan
     final isCustom = widget.featureType.toLowerCase() == 'custom';
     final screen = isCustom
         ? PelangganListCustomScreen(
@@ -281,66 +247,293 @@ class _DetailFeatureChecklistScreenState
     );
   }
 
+  IconData getIconData(String iconName) {
+    switch (iconName) {
+      case 'dashboard':
+        return Icons.dashboard;
+      case 'visit':
+        return Icons.location_on;
+      case 'call':
+        return Icons.call;
+      case 'report':
+        return Icons.insert_chart;
+      default:
+        return Icons.extension;
+    }
+  }
+
+  // ====== UI widgets ======
+
+  Widget _headerCard() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      child: Material(
+        color: _UX.surface,
+        elevation: 1,
+        borderRadius: BorderRadius.circular(_UX.r16),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+          child: Row(
+            children: [
+              CircleAvatar(
+                radius: 22,
+                backgroundColor: _UX.primarySurface,
+                child: const Icon(Icons.store_mall_directory,
+                    color: _UX.primaryDark),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(widget.pelanggan.nama,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w800, fontSize: 16)),
+                    const SizedBox(height: 2),
+                    Text(
+                      widget.pelanggan.alamat,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: _UX.textMuted),
+                    ),
+                    const SizedBox(height: 6),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _sectionHeader(String title, {IconData? icon}) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
+      child: Row(
+        children: [
+          if (icon != null) Icon(icon, color: _UX.primaryDark, size: 18),
+          if (icon != null) const SizedBox(width: 6),
+          Text(
+            title,
+            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+          ),
+          const Expanded(child: Divider(indent: 10, thickness: .6)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDetailCard(FeatureDetail detail) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      child: Material(
+        color: _UX.surface,
+        elevation: 1,
+        borderRadius: BorderRadius.circular(_UX.r12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ListTile(
+                horizontalTitleGap: 10,
+                leading: CircleAvatar(
+                  radius: 18,
+                  backgroundColor: _UX.primarySurface,
+                  child: Icon(getIconData(detail.icon), color: _UX.primaryDark),
+                ),
+                title: Text(
+                  detail.nama,
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w700, fontSize: 15),
+                ),
+              ),
+              if (detail.subDetails.isNotEmpty)
+                const Divider(height: 0, color: Color(0xFFEDECF4)),
+              ...detail.subDetails.map((sub) => _CheckboxTile(
+                    title: sub.nama,
+                    value: sub.isChecked,
+                    onChanged: (val) async {
+                      setState(() => sub.isChecked = val ?? false);
+                      await DatabaseHelper.instance.upsertChecklistDetail(
+                        idVisit: visitId,
+                        idFeature: widget.featureId,
+                        idFeatureDetail: detail.id,
+                        idFeatureSubDetail: sub.id,
+                        isChecked: sub.isChecked,
+                      );
+                    },
+                  )),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _catatanField() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+      child: TextField(
+        controller: catatanController,
+        maxLines: 3,
+        onChanged: (val) async {
+          setState(() => catatan = val);
+          // optional: simpan bersamaan dengan checklist lain (tetap panggil upsert agar ada jejak update)
+          await _updateChecklistToLocal();
+        },
+        decoration: InputDecoration(
+          labelText: 'Catatan',
+          hintText: 'Tambahkan catatan kunjungan...',
+          filled: true,
+          fillColor: _UX.surface,
+          border: _UX.roundedBorder(),
+          enabledBorder: _UX.roundedBorder(),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(_UX.r12),
+            borderSide: const BorderSide(color: _UX.primaryDark, width: 1.4),
+          ),
+          prefixIcon: const Icon(Icons.edit_note),
+        ),
+      ),
+    );
+  }
+
+  Widget _submitBar() {
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+        child: isSubmitting
+            ? const SizedBox(
+                height: 52, child: Center(child: CircularProgressIndicator()))
+            : ElevatedButton.icon(
+                onPressed: submitChecklist,
+                icon:
+                    const Icon(Icons.check_circle_outline, color: Colors.white),
+                label: const Text('SELESAI'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _UX.success,
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size.fromHeight(52),
+                  textStyle: const TextStyle(
+                      fontSize: 16, fontWeight: FontWeight.w700),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(32),
+                  ),
+                  elevation: 2,
+                ),
+              ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: _UX.bg,
       body: isLoadingChecklist
           ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              padding: const EdgeInsets.only(bottom: 32),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Card(
-                    margin: const EdgeInsets.all(12),
-                    color: Colors.blue[50],
-                    child: ListTile(
-                      title: Text(widget.pelanggan.nama,
-                          style: const TextStyle(fontWeight: FontWeight.bold)),
-                      subtitle:
-                          Text('NOCALL: ${widget.pelanggan.nocall ?? "-"}'),
-                    ),
-                  ),
-                  ..._details.map(buildChecklist).toList(),
-                  Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: TextFormField(
-                      controller: catatanController,
-                      decoration: const InputDecoration(
-                        labelText: 'Catatan',
-                        border: OutlineInputBorder(),
-                      ),
-                      maxLines: 2,
-                      onChanged: (val) async {
-                        setState(() => catatan = val);
-                        await _updateChecklistToLocal();
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: isSubmitting
-                        ? const SizedBox(
-                            height: 50,
-                            child: Center(child: CircularProgressIndicator()))
-                        : ElevatedButton.icon(
-                            onPressed: submitChecklist,
-                            icon: const Icon(Icons.check_circle_outline,
-                                size: 20, color: Colors.white),
-                            label: const Text('SELESAI'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.green,
-                              foregroundColor: Colors.white,
-                              minimumSize: const Size.fromHeight(50),
-                              textStyle: const TextStyle(fontSize: 18),
-                            ),
-                          ),
-                  ),
-                  const SizedBox(height: 24),
-                ],
-              ),
+          : CustomScrollView(
+              slivers: [
+                SliverToBoxAdapter(child: _headerCard()),
+                SliverToBoxAdapter(
+                    child: _sectionHeader('Checklist', icon: Icons.task_alt)),
+                // Detail cards
+                SliverList.builder(
+                  itemCount: _details.length,
+                  itemBuilder: (context, i) => _buildDetailCard(_details[i]),
+                ),
+                SliverToBoxAdapter(
+                    child: _sectionHeader('Catatan', icon: Icons.edit_note)),
+                SliverToBoxAdapter(child: _catatanField()),
+                const SliverToBoxAdapter(child: SizedBox(height: 90)),
+              ],
             ),
+      bottomNavigationBar: _submitBar(),
+    );
+  }
+}
+
+// ====== Reusable Bits ======
+
+class _InfoChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+  const _InfoChip(
+      {required this.icon, required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: _UX.primarySurface,
+        borderRadius: BorderRadius.circular(_UX.r999),
+        border: Border.all(color: _UX.cardBorder),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: _UX.primaryDark),
+          const SizedBox(width: 6),
+          Text(
+            '$label: ',
+            style: const TextStyle(
+                color: _UX.textMuted, fontWeight: FontWeight.w600),
+          ),
+          Text(value, style: const TextStyle(fontWeight: FontWeight.w800)),
+        ],
+      ),
+    );
+  }
+}
+
+class _CheckboxTile extends StatelessWidget {
+  final String title;
+  final bool value;
+  final ValueChanged<bool?> onChanged;
+
+  const _CheckboxTile({
+    required this.title,
+    required this.value,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: () => onChanged(!value),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 4, 14, 4),
+        child: Container(
+          decoration: BoxDecoration(
+            color: _UX.primarySurface.withOpacity(value ? .35 : .18),
+            borderRadius: BorderRadius.circular(_UX.r10),
+            border: Border.all(
+              color: value ? _UX.primaryDark : _UX.cardBorder,
+              width: value ? 1.2 : 1,
+            ),
+          ),
+          child: CheckboxListTile(
+            value: value,
+            onChanged: onChanged,
+            title: Text(
+              title,
+              style: const TextStyle(fontWeight: FontWeight.w600),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            controlAffinity: ListTileControlAffinity.leading,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+            activeColor: _UX.primaryDark,
+          ),
+        ),
+      ),
     );
   }
 }

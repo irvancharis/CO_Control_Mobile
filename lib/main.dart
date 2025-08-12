@@ -6,12 +6,14 @@ import 'screens/login_screen.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/pelanggan_list_screen.dart';
 import 'providers/sales_provider.dart';
+import 'package:intl/date_symbol_data_local.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   final prefs = await SharedPreferences.getInstance();
   final isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
+  await initializeDateFormatting('id_ID', null);
 
   runApp(
     MultiProvider(

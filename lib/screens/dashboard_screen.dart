@@ -1,17 +1,37 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:path/path.dart';
+import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:intl/intl.dart';
 
 import '../models/feature_model.dart';
 import '../services/feature_service.dart';
 import '../services/sync_service.dart';
+import '../config/server.dart';
 import 'pelanggan_list_screen.dart';
 import 'pelanggan_list_custom_screen.dart';
-import '../config/server.dart';
-import 'package:intl/intl.dart';
+
+// ===================== Tokens (selaras layar lain) =====================
+class _UX {
+  static const primary = Color(0xFF8E7CC3);
+  static const primaryDark = Color(0xFF6F5AA8);
+  static const primarySurface = Color(0xFFF0ECFA);
+  static const success = Color(0xFF2EAD54);
+  static const bg = Color(0xFFF7F1FF);
+  static const surface = Colors.white;
+  static const cardBorder = Color(0xFFE6E2F2);
+  static const textMuted = Color(0xFF7A7A7A);
+  static const r12 = 12.0;
+  static const r16 = 16.0;
+  static const r999 = 999.0;
+
+  static InputBorder roundedBorder() => OutlineInputBorder(
+        borderRadius: BorderRadius.circular(r12),
+        borderSide: const BorderSide(color: Color(0xFFE1E1E8)),
+      );
+}
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({Key? key}) : super(key: key);
@@ -22,18 +42,27 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   late Future<List<Feature>> _futureFeatures;
-  bool isSyncing = false;
-  bool isExporting = false;
+  bool _syncing = false;
+  bool _exporting = false;
+  String? username;
 
   @override
   void initState() {
     super.initState();
     _futureFeatures = _loadFeaturesFiltered();
+    _loadUsername();
   }
 
-  // =========================
-  // FILTER FITUR DARI DATABASE
-  // =========================
+  Future<void> _loadUsername() async {
+    final prefs = await SharedPreferences.getInstance();
+    final storedName =
+        prefs.getString('user_id') ?? 'Pengguna'; // default jika null
+    setState(() {
+      username = storedName;
+    });
+  }
+
+  // ========================= FILTER FITUR =========================
   Future<List<Feature>> _loadFeaturesFiltered() async {
     try {
       final all = await FeatureService().fetchFeatures();
@@ -44,11 +73,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
         return all;
       }
 
-      // Ada transaksi → filter hanya id yang muncul di visit_checklist
       final filtered =
           all.where((f) => activeFeatureIds.contains(f.id)).toList();
-      // Safety fallback
-      return filtered.isEmpty ? all : filtered;
+      return filtered.isEmpty ? all : filtered; // safety fallback
     } catch (e) {
       debugPrint('Gagal memfilter fitur: $e');
       // Fallback ke semua fitur jika error
@@ -56,45 +83,36 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  /// Ambil DISTINCT id_feature dari table visit_checklist.
-  /// Aman untuk kasus: table belum ada / sedang diubah saat sync.
+  /// Ambil DISTINCT fitur aktif dari tabel pelanggan (kolom `fitur`)
   Future<Set<String>> _getActiveFeatureIdsFromDb() async {
-    final dbPath = join(await getDatabasesPath(), 'appdb.db');
+    final dbPath = p.join(await getDatabasesPath(), 'appdb.db');
     Database? db;
     try {
       db = await openDatabase(dbPath);
+      // pastikan tabel ada
       final existRows = await db.rawQuery(
         "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
         ['pelanggan'],
       );
-      if (existRows.isEmpty) {
-        // Tabel belum dibuat → anggap belum ada transaksi
-        return <String>{};
-      }
+      if (existRows.isEmpty) return <String>{};
 
-      final rows = await db.rawQuery('''
-        SELECT DISTINCT fitur AS feature_id
-        FROM pelanggan        
-      ''');
-
+      final rows = await db
+          .rawQuery('SELECT DISTINCT fitur AS feature_id FROM pelanggan');
       return rows
           .map((r) => (r['feature_id'] ?? '').toString())
           .where((s) => s.isNotEmpty)
           .toSet();
     } catch (e) {
       debugPrint('getActiveFeatureIds error: $e');
-      // Jangan jatuhkan UI, fallback kosong
       return <String>{};
     } finally {
       await db?.close();
     }
   }
 
-  // =========================
-  // SYNC LOGIC
-  // =========================
-  Future<void> doSync(BuildContext context) async {
-    setState(() => isSyncing = true);
+  // ========================= SYNC =========================
+  Future<void> _doSync() async {
+    setState(() => _syncing = true);
     try {
       await SyncService.syncAll();
       if (!mounted) return;
@@ -110,18 +128,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
         SnackBar(content: Text('Sync gagal: $e')),
       );
     } finally {
-      if (mounted) setState(() => isSyncing = false);
+      if (mounted) setState(() => _syncing = false);
     }
   }
 
-  // =========================
-  // EXPORT LOGIC
-  // =========================
-  Future<void> exportDatabase(BuildContext context) async {
-    setState(() => isExporting = true);
-
+  // ========================= EXPORT DB =========================
+  Future<void> _exportDatabase() async {
+    setState(() => _exporting = true);
     try {
-      final dbPath = join(await getDatabasesPath(), 'appdb.db');
+      final dbPath = p.join(await getDatabasesPath(), 'appdb.db');
       final dbFile = File(dbPath);
 
       if (!(await dbFile.exists())) {
@@ -140,14 +155,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final fileBytes = await dbFile.readAsBytes();
 
       final url = Uri.parse('${ServerConfig.baseUrl}/upload-db');
-      var request = http.MultipartRequest('POST', url)
-        ..files.add(
-          http.MultipartFile.fromBytes(
-            'file',
-            fileBytes,
-            filename: fileName,
-          ),
-        );
+      final request = http.MultipartRequest('POST', url)
+        ..files.add(http.MultipartFile.fromBytes('file', fileBytes,
+            filename: fileName));
 
       final response = await request.send();
 
@@ -169,11 +179,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
         SnackBar(content: Text('Export gagal: $e')),
       );
     } finally {
-      if (mounted) setState(() => isExporting = false);
+      if (mounted) setState(() => _exporting = false);
     }
   }
 
-  IconData getIconData(String iconName) {
+  // ========================= UTIL =========================
+  IconData _iconFromName(String? iconName) {
     switch (iconName) {
       case 'dashboard':
         return Icons.dashboard;
@@ -188,17 +199,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
+  Future<void> _refresh() async {
+    setState(() => _futureFeatures = _loadFeaturesFiltered());
+    await _futureFeatures;
+  }
+
   @override
   Widget build(BuildContext context) {
-    return PopScope(
-      // Biarkan sistem pop kalau masih ada page sebelumnya.
-      canPop: false,
-      onPopInvoked: (didPop) async {
-        if (didPop) return; // sudah dipop (mis. kembali ke pelanggan)
+    final dateStr =
+        DateFormat('EEEE, d MMM yyyy', 'id_ID').format(DateTime.now());
 
-        // Kalau sudah root (tidak bisa pop), baru tampilkan dialog keluar.
-        final canPop = Navigator.of(context).canPop();
-
+    return WillPopScope(
+      onWillPop: () async {
         final shouldExit = await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
@@ -210,50 +222,48 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 child: const Text('Tidak'),
               ),
               TextButton(
-                onPressed: () => exit(0),
+                onPressed: () => Navigator.of(context).pop(true),
                 child: const Text('Ya'),
               ),
             ],
           ),
         );
-
         if (shouldExit == true) {
-          Navigator.of(context).maybePop();
+          // keluar app
+          exit(0);
         }
+        return false;
       },
       child: Scaffold(
+        backgroundColor: _UX.bg,
         appBar: AppBar(
-          title: const Text("Dashboard"),
+          elevation: 0,
+          backgroundColor: _UX.surface,
+          foregroundColor: Colors.black87,
+          title: const Text('Dashboard',
+              style: TextStyle(fontWeight: FontWeight.w700)),
           actions: [
-            // EXPORT DB BUTTON
+            // Export DB
             IconButton(
-              icon: isExporting
+              tooltip: 'Export Database (Upload ke server)',
+              onPressed: _exporting ? null : _exportDatabase,
+              icon: _exporting
                   ? const SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(strokeWidth: 2))
                   : const Icon(Icons.file_upload),
-              tooltip: 'Export Database (Download)',
-              onPressed: isExporting ? null : () => exportDatabase(context),
             ),
-            // SYNC BUTTON
+            // Sync
             IconButton(
-              icon: isSyncing
-                  ? const SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Icon(Icons.sync),
               tooltip: 'Sync Data Master (Server → Lokal)',
-              onPressed: isSyncing ? null : () => doSync(context),
+              onPressed: _syncing ? null : _doSync,
+              icon: _syncing
+                  ? const SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.sync),
             ),
           ],
         ),
@@ -261,70 +271,193 @@ class _DashboardScreenState extends State<DashboardScreen> {
           future: _futureFeatures,
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting ||
-                isSyncing) {
+                _syncing) {
               return const Center(child: CircularProgressIndicator());
-            } else if (snapshot.hasError) {
-              return Center(child: Text("Error: ${snapshot.error}"));
-            } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-              return const Center(child: Text("Tidak ada menu fitur"));
+            }
+            if (snapshot.hasError) {
+              return Center(child: Text('Error: ${snapshot.error}'));
+            }
+            final features = snapshot.data ?? const <Feature>[];
+            if (features.isEmpty) {
+              return RefreshIndicator(
+                onRefresh: _refresh,
+                child: ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  children: const [
+                    SizedBox(height: 160),
+                    Center(
+                        child: Text('Tidak ada menu fitur',
+                            style: TextStyle(color: _UX.textMuted))),
+                  ],
+                ),
+              );
             }
 
-            final features = snapshot.data!;
-            return GridView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: features.length,
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 12,
-                childAspectRatio: 3 / 2,
-              ),
-              itemBuilder: (context, index) {
-                final feature = features[index];
-                return GestureDetector(
-                  onTap: () {
-                    final action = feature.type?.toLowerCase();
-                    final screen = action == 'custom'
-                        ? PelangganListCustomScreen(
-                            featureId: feature.id,
-                            title: feature.nama,
-                            featureType: feature.type,
-                          )
-                        : PelangganListScreen(
-                            featureId: feature.id,
-                            title: feature.nama,
-                            featureType: feature.type,
-                          );
-
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => screen),
-                    );
-                  },
-                  child: Card(
-                    elevation: 4,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(getIconData(feature.icon), size: 40),
-                          const SizedBox(height: 10),
-                          Text(
-                            feature.nama,
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(fontWeight: FontWeight.bold),
+            return RefreshIndicator(
+              onRefresh: _refresh,
+              child: CustomScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                slivers: [
+                  // Header salam + tanggal
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
+                      child: Material(
+                        color: _UX.surface,
+                        elevation: 1,
+                        borderRadius: BorderRadius.circular(_UX.r16),
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+                          child: Row(
+                            children: [
+                              CircleAvatar(
+                                radius: 24,
+                                backgroundColor: _UX.primarySurface,
+                                child: const Icon(Icons.calendar_today,
+                                    color: _UX.primaryDark),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text('Halo, ${username ?? ''} 👋',
+                                        style: const TextStyle(
+                                            fontWeight: FontWeight.w800,
+                                            fontSize: 16)),
+                                    const SizedBox(height: 2),
+                                    Text(dateStr,
+                                        style: const TextStyle(
+                                            color: _UX.textMuted)),
+                                  ],
+                                ),
+                              ),
+                            ],
                           ),
-                        ],
+                        ),
                       ),
                     ),
                   ),
-                );
-              },
+
+                  // Judul section
+                  const SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.fromLTRB(16, 8, 16, 6),
+                      child: _SectionTitle(
+                          title: 'Fitur Tersedia', icon: Icons.apps),
+                    ),
+                  ),
+
+                  // Grid fitur
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                    sliver: SliverGrid(
+                      delegate: SliverChildBuilderDelegate(
+                        (context, index) {
+                          final f = features[index];
+                          return _FeatureCard(
+                            title: f.nama,
+                            icon: _iconFromName(f.icon),
+                            onTap: () {
+                              final type = (f.type ?? '').toLowerCase();
+                              final screen = type == 'custom'
+                                  ? PelangganListCustomScreen(
+                                      featureId: f.id,
+                                      title: f.nama,
+                                      featureType: f.type ?? 'custom',
+                                    )
+                                  : PelangganListScreen(
+                                      featureId: f.id,
+                                      title: f.nama,
+                                      featureType: f.type ?? 'standard',
+                                    );
+                              Navigator.push(context,
+                                  MaterialPageRoute(builder: (_) => screen));
+                            },
+                          );
+                        },
+                        childCount: features.length,
+                      ),
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 2,
+                        crossAxisSpacing: 12,
+                        mainAxisSpacing: 12,
+                        childAspectRatio: 3 / 2,
+                      ),
+                    ),
+                  ),
+
+                  const SliverToBoxAdapter(child: SizedBox(height: 90)),
+                ],
+              ),
             );
           },
+        ),
+      ),
+    );
+  }
+}
+
+// ===================== Reusable UI =====================
+class _SectionTitle extends StatelessWidget {
+  final String title;
+  final IconData icon;
+  const _SectionTitle({required this.title, required this.icon});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, color: _UX.primaryDark, size: 18),
+        const SizedBox(width: 6),
+        Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
+        const Expanded(child: Divider(indent: 10, thickness: .6)),
+      ],
+    );
+  }
+}
+
+class _FeatureCard extends StatelessWidget {
+  final String title;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  const _FeatureCard({
+    required this.title,
+    required this.icon,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: _UX.surface,
+      elevation: 1.5,
+      borderRadius: BorderRadius.circular(_UX.r16),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(_UX.r16),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircleAvatar(
+                radius: 26,
+                backgroundColor: _UX.primarySurface,
+                child: Icon(icon, color: _UX.primaryDark, size: 26),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                title,
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ],
+          ),
         ),
       ),
     );
