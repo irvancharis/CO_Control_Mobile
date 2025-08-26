@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:uuid/uuid.dart';
+import 'package:http/http.dart' as http;
+import 'package:intl/intl.dart';
 
 import '../models/feature_detail_model.dart';
 import '../models/feature_subdetail_model.dart';
@@ -12,7 +14,6 @@ import '../services/submit_visit_service.dart';
 import 'pelanggan_list_screen.dart';
 import 'pelanggan_list_custom_screen.dart';
 
-// ======= Color & Style Tokens (selaras dengan list screen) =======
 class _UX {
   static const primary = Color(0xFF8E7CC3);
   static const primaryDark = Color(0xFF6F5AA8);
@@ -247,6 +248,279 @@ class _DetailFeatureChecklistScreenState
     );
   }
 
+  // === FETCH HISTORY SELLING ===
+  Future<void> _fetchHistorySelling() async {
+    final idPelanggan = widget.pelanggan.id;
+    final url =
+        Uri.parse("http://192.168.3.253:3000/DATAHISTORYSELLING/$idPelanggan");
+
+    try {
+      final response = await http.get(url);
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (!mounted) return;
+
+        showModalBottomSheet(
+          context: context,
+          isScrollControlled: true,
+          shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          builder: (_) {
+            return DraggableScrollableSheet(
+              initialChildSize: 0.8,
+              minChildSize: 0.5,
+              maxChildSize: 0.95,
+              expand: false,
+              builder: (_, controller) {
+                return Container(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Center(
+                        child: Container(
+                          width: 40,
+                          height: 4,
+                          margin: const EdgeInsets.only(bottom: 12),
+                          decoration: BoxDecoration(
+                            color: Colors.grey[400],
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                      ),
+                      const Text(
+                        "History Selling",
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Expanded(
+                        child: ListView.builder(
+                          controller: controller,
+                          itemCount: data.length,
+                          itemBuilder: (context, i) {
+                            final row = data[i];
+                            final tanggal = DateFormat("dd MMM yyyy").format(
+                                DateTime.parse(row['TANGGAL']).toLocal());
+
+                            return Card(
+                              margin: const EdgeInsets.symmetric(
+                                  vertical: 6, horizontal: 4),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                side: BorderSide(color: _UX.cardBorder),
+                              ),
+                              child: ExpansionTile(
+                                tilePadding:
+                                    const EdgeInsets.symmetric(horizontal: 16),
+                                leading: CircleAvatar(
+                                  backgroundColor: _UX.primarySurface,
+                                  child: const Icon(Icons.shopping_cart,
+                                      color: _UX.primaryDark),
+                                ),
+                                title: Text(
+                                  tanggal,
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 15),
+                                ),
+                                subtitle: Text(
+                                  "Sales: ${row['IDSALES']}",
+                                  style: const TextStyle(color: _UX.textMuted),
+                                ),
+                                childrenPadding: const EdgeInsets.symmetric(
+                                    horizontal: 12, vertical: 6),
+                                children: [
+                                  FutureBuilder<List<dynamic>>(
+                                    future: _fetchDetail(row['TANGGAL'],
+                                        row['IDSALES'], idPelanggan),
+                                    builder: (context, snapshot) {
+                                      if (snapshot.connectionState ==
+                                          ConnectionState.waiting) {
+                                        return const Padding(
+                                          padding: EdgeInsets.all(8.0),
+                                          child: Center(
+                                              child:
+                                                  CircularProgressIndicator()),
+                                        );
+                                      } else if (snapshot.hasError) {
+                                        return Padding(
+                                          padding: const EdgeInsets.all(8.0),
+                                          child: Text(
+                                              "Error: ${snapshot.error}",
+                                              style: TextStyle(
+                                                  color: _UX.danger,
+                                                  fontWeight: FontWeight.w600)),
+                                        );
+                                      } else if (!snapshot.hasData ||
+                                          snapshot.data!.isEmpty) {
+                                        return const Padding(
+                                          padding: EdgeInsets.all(8.0),
+                                          child: Text("Tidak ada detail."),
+                                        );
+                                      } else {
+                                        final details = snapshot.data!;
+                                        return Column(
+                                          children: [
+                                            // Header row
+                                            Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                      vertical: 6,
+                                                      horizontal: 10),
+                                              decoration: BoxDecoration(
+                                                color: _UX.primarySurface,
+                                                borderRadius:
+                                                    BorderRadius.circular(8),
+                                              ),
+                                              child: Row(
+                                                children: const [
+                                                  Expanded(
+                                                      flex: 3,
+                                                      child: Text("Produk",
+                                                          style: TextStyle(
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .w700))),
+                                                  Expanded(
+                                                      flex: 2,
+                                                      child: Text("Qty",
+                                                          style: TextStyle(
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .w700))),
+                                                  Expanded(
+                                                      flex: 2,
+                                                      child: Text("Harga",
+                                                          style: TextStyle(
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .w700))),
+                                                  Expanded(
+                                                      flex: 2,
+                                                      child: Text("Promo",
+                                                          style: TextStyle(
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .w700))),
+                                                ],
+                                              ),
+                                            ),
+                                            const SizedBox(height: 4),
+
+                                            // Data rows
+                                            ...details.map((detail) {
+                                              return Container(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                        vertical: 6,
+                                                        horizontal: 10),
+                                                margin: const EdgeInsets.only(
+                                                    bottom: 2),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.white,
+                                                  border: Border(
+                                                    bottom: BorderSide(
+                                                        color: _UX.cardBorder,
+                                                        width: 0.6),
+                                                  ),
+                                                ),
+                                                child: Row(
+                                                  children: [
+                                                    Expanded(
+                                                      flex: 3,
+                                                      child: Text(
+                                                        detail['IDITEMPRODUK'] ??
+                                                            "-",
+                                                        style: const TextStyle(
+                                                            fontSize: 13),
+                                                        overflow: TextOverflow
+                                                            .ellipsis,
+                                                      ),
+                                                    ),
+                                                    Expanded(
+                                                      flex: 2,
+                                                      child: Text(
+                                                        "${detail['QTY']} ${detail['UNIT']}",
+                                                        style: const TextStyle(
+                                                            fontSize: 13),
+                                                      ),
+                                                    ),
+                                                    Expanded(
+                                                      flex: 2,
+                                                      child: Text(
+                                                        "Rp ${detail['HARGA']}",
+                                                        style: const TextStyle(
+                                                            fontSize: 13,
+                                                            color: _UX.success,
+                                                            fontWeight:
+                                                                FontWeight
+                                                                    .w600),
+                                                      ),
+                                                    ),
+                                                    Expanded(
+                                                      flex: 2,
+                                                      child: Text(
+                                                        detail['SOURCE'] ?? "-",
+                                                        style: const TextStyle(
+                                                            fontSize: 12,
+                                                            color:
+                                                                _UX.textMuted),
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              );
+                                            }).toList(),
+                                          ],
+                                        );
+                                      }
+                                    },
+                                  )
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            );
+          },
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content:
+                Text("Gagal load history selling (${response.statusCode})")));
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text("Fetch error: $e")));
+    }
+  }
+
+  Future<List<dynamic>> _fetchDetail(
+      String tanggal, String idSales, String idPelanggan) async {
+    final tgl =
+        DateFormat("yyyy-MM-dd").format(DateTime.parse(tanggal).toLocal());
+
+    final url = Uri.parse(
+        "http://192.168.3.253:3000/DETAILHISTORYSELLING/$idSales/$tgl/$idPelanggan");
+
+    final response = await http.get(url);
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    } else {
+      throw Exception("Gagal fetch detail");
+    }
+  }
+
   IconData getIconData(String iconName) {
     switch (iconName) {
       case 'dashboard':
@@ -261,8 +535,6 @@ class _DetailFeatureChecklistScreenState
         return Icons.extension;
     }
   }
-
-  // ====== UI widgets ======
 
   Widget _headerCard() {
     return Padding(
@@ -298,7 +570,6 @@ class _DetailFeatureChecklistScreenState
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(color: _UX.textMuted),
                     ),
-                    const SizedBox(height: 6),
                   ],
                 ),
               ),
@@ -353,8 +624,7 @@ class _DetailFeatureChecklistScreenState
               ),
               if (detail.subDetails.isNotEmpty)
                 const Divider(height: 0, color: Color(0xFFEDECF4)),
-              ...detail.subDetails.map((sub) => _CheckboxTile(
-                    title: sub.nama,
+              ...detail.subDetails.map((sub) => CheckboxListTile(
                     value: sub.isChecked,
                     onChanged: (val) async {
                       setState(() => sub.isChecked = val ?? false);
@@ -366,6 +636,15 @@ class _DetailFeatureChecklistScreenState
                         isChecked: sub.isChecked,
                       );
                     },
+                    title: Text(
+                      sub.nama,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    controlAffinity: ListTileControlAffinity.leading,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                    activeColor: _UX.primaryDark,
                   )),
             ],
           ),
@@ -382,7 +661,6 @@ class _DetailFeatureChecklistScreenState
         maxLines: 3,
         onChanged: (val) async {
           setState(() => catatan = val);
-          // optional: simpan bersamaan dengan checklist lain (tetap panggil upsert agar ada jejak update)
           await _updateChecklistToLocal();
         },
         decoration: InputDecoration(
@@ -441,8 +719,26 @@ class _DetailFeatureChecklistScreenState
               slivers: [
                 SliverToBoxAdapter(child: _headerCard()),
                 SliverToBoxAdapter(
+                  child: Padding(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: ElevatedButton.icon(
+                      onPressed: _fetchHistorySelling,
+                      icon: const Icon(Icons.history),
+                      label: const Text("Lihat History Selling"),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _UX.primaryDark,
+                        foregroundColor: Colors.white,
+                        minimumSize: const Size.fromHeight(48),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                SliverToBoxAdapter(
                     child: _sectionHeader('Checklist', icon: Icons.task_alt)),
-                // Detail cards
                 SliverList.builder(
                   itemCount: _details.length,
                   itemBuilder: (context, i) => _buildDetailCard(_details[i]),
@@ -454,86 +750,6 @@ class _DetailFeatureChecklistScreenState
               ],
             ),
       bottomNavigationBar: _submitBar(),
-    );
-  }
-}
-
-// ====== Reusable Bits ======
-
-class _InfoChip extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String value;
-  const _InfoChip(
-      {required this.icon, required this.label, required this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: _UX.primarySurface,
-        borderRadius: BorderRadius.circular(_UX.r999),
-        border: Border.all(color: _UX.cardBorder),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 16, color: _UX.primaryDark),
-          const SizedBox(width: 6),
-          Text(
-            '$label: ',
-            style: const TextStyle(
-                color: _UX.textMuted, fontWeight: FontWeight.w600),
-          ),
-          Text(value, style: const TextStyle(fontWeight: FontWeight.w800)),
-        ],
-      ),
-    );
-  }
-}
-
-class _CheckboxTile extends StatelessWidget {
-  final String title;
-  final bool value;
-  final ValueChanged<bool?> onChanged;
-
-  const _CheckboxTile({
-    required this.title,
-    required this.value,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: () => onChanged(!value),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 4, 14, 4),
-        child: Container(
-          decoration: BoxDecoration(
-            color: _UX.primarySurface.withOpacity(value ? .35 : .18),
-            borderRadius: BorderRadius.circular(_UX.r10),
-            border: Border.all(
-              color: value ? _UX.primaryDark : _UX.cardBorder,
-              width: value ? 1.2 : 1,
-            ),
-          ),
-          child: CheckboxListTile(
-            value: value,
-            onChanged: onChanged,
-            title: Text(
-              title,
-              style: const TextStyle(fontWeight: FontWeight.w600),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-            controlAffinity: ListTileControlAffinity.leading,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 8),
-            activeColor: _UX.primaryDark,
-          ),
-        ),
-      ),
     );
   }
 }
