@@ -176,6 +176,8 @@ class _DetailFeatureChecklistScreenState
     }
   }
 
+  // NOTE: This method is not used directly, as the onChanged handlers already save the data.
+  // It's kept here for reference if a bulk update is ever needed.
   Future<void> _updateChecklistToLocal() async {
     for (final detail in _details) {
       for (final sub in detail.subDetails) {
@@ -328,10 +330,6 @@ class _DetailFeatureChecklistScreenState
                                       fontWeight: FontWeight.w700,
                                       fontSize: 15),
                                 ),
-                                subtitle: Text(
-                                  "Sales: ${row['IDSALES']}",
-                                  style: const TextStyle(color: _UX.textMuted),
-                                ),
                                 childrenPadding: const EdgeInsets.symmetric(
                                     horizontal: 12, vertical: 6),
                                 children: [
@@ -421,7 +419,7 @@ class _DetailFeatureChecklistScreenState
                                                         horizontal: 10),
                                                 margin: const EdgeInsets.only(
                                                     bottom: 2),
-                                                decoration: BoxDecoration(
+                                                decoration: const BoxDecoration(
                                                   color: Colors.white,
                                                   border: Border(
                                                     bottom: BorderSide(
@@ -661,7 +659,8 @@ class _DetailFeatureChecklistScreenState
         maxLines: 3,
         onChanged: (val) async {
           setState(() => catatan = val);
-          await _updateChecklistToLocal();
+          // Note: The onChanged handler for the text field automatically updates the state.
+          // The data is saved to the DB upon submit.
         },
         decoration: InputDecoration(
           labelText: 'Catatan',
@@ -711,45 +710,64 @@ class _DetailFeatureChecklistScreenState
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: _UX.bg,
-      body: isLoadingChecklist
-          ? const Center(child: CircularProgressIndicator())
-          : CustomScrollView(
-              slivers: [
-                SliverToBoxAdapter(child: _headerCard()),
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    child: ElevatedButton.icon(
-                      onPressed: _fetchHistorySelling,
-                      icon: const Icon(Icons.history),
-                      label: const Text("Lihat History Selling"),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: _UX.primaryDark,
-                        foregroundColor: Colors.white,
-                        minimumSize: const Size.fromHeight(48),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+    // START: Added PopScope to handle back button press.
+    return PopScope(
+      canPop: true,
+      onPopInvoked: (didPop) async {
+        // Only run the logic if the system navigation is popping the route.
+        if (didPop) {
+          // Check if any checklist item is checked OR if the notes field has content.
+          final hasChanges = _details.any(
+                  (detail) => detail.subDetails.any((sub) => sub.isChecked)) ||
+              catatanController.text.trim().isNotEmpty;
+
+          // If no changes were made, delete the empty visit transaction.
+          if (!hasChanges) {
+            await DatabaseHelper.instance.deleteVisit(visitId);
+          }
+        }
+      },
+      child: Scaffold(
+        backgroundColor: _UX.bg,
+        body: isLoadingChecklist
+            ? const Center(child: CircularProgressIndicator())
+            : CustomScrollView(
+                slivers: [
+                  SliverToBoxAdapter(child: _headerCard()),
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 8),
+                      child: ElevatedButton.icon(
+                        onPressed: _fetchHistorySelling,
+                        icon: const Icon(Icons.history),
+                        label: const Text("Lihat History Selling"),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _UX.primaryDark,
+                          foregroundColor: Colors.white,
+                          minimumSize: const Size.fromHeight(48),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
                         ),
                       ),
                     ),
                   ),
-                ),
-                SliverToBoxAdapter(
-                    child: _sectionHeader('Checklist', icon: Icons.task_alt)),
-                SliverList.builder(
-                  itemCount: _details.length,
-                  itemBuilder: (context, i) => _buildDetailCard(_details[i]),
-                ),
-                SliverToBoxAdapter(
-                    child: _sectionHeader('Catatan', icon: Icons.edit_note)),
-                SliverToBoxAdapter(child: _catatanField()),
-                const SliverToBoxAdapter(child: SizedBox(height: 90)),
-              ],
-            ),
-      bottomNavigationBar: _submitBar(),
+                  SliverToBoxAdapter(
+                      child: _sectionHeader('Checklist', icon: Icons.task_alt)),
+                  SliverList.builder(
+                    itemCount: _details.length,
+                    itemBuilder: (context, i) => _buildDetailCard(_details[i]),
+                  ),
+                  SliverToBoxAdapter(
+                      child: _sectionHeader('Catatan', icon: Icons.edit_note)),
+                  SliverToBoxAdapter(child: _catatanField()),
+                  const SliverToBoxAdapter(child: SizedBox(height: 90)),
+                ],
+              ),
+        bottomNavigationBar: _submitBar(),
+      ),
     );
+    // END: Added PopScope.
   }
 }

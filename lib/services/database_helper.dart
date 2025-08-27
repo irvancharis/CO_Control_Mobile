@@ -277,6 +277,22 @@ class DatabaseHelper {
     }
   }
 
+  // Tambahkan ini di dalam class DatabaseHelper
+  Future<void> deleteVisit(String idVisit) async {
+    final db = await database;
+    await db.delete(
+      'visit',
+      where: 'id_visit = ?',
+      whereArgs: [idVisit],
+    );
+    // Optional: Anda juga bisa menghapus detail checklist yang terkait jika perlu
+    await db.delete(
+      'checklist_detail',
+      where: 'id_visit = ?',
+      whereArgs: [idVisit],
+    );
+  }
+
   Future<void> upsertChecklistDetail({
     required String idVisit,
     required String idFeature,
