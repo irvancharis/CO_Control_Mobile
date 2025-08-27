@@ -306,182 +306,7 @@ class _DetailFeatureChecklistScreenState
                           itemCount: data.length,
                           itemBuilder: (context, i) {
                             final row = data[i];
-                            final tanggal = DateFormat("dd MMM yyyy").format(
-                                DateTime.parse(row['TANGGAL']).toLocal());
-
-                            return Card(
-                              margin: const EdgeInsets.symmetric(
-                                  vertical: 6, horizontal: 4),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                side: BorderSide(color: _UX.cardBorder),
-                              ),
-                              child: ExpansionTile(
-                                tilePadding:
-                                    const EdgeInsets.symmetric(horizontal: 16),
-                                leading: CircleAvatar(
-                                  backgroundColor: _UX.primarySurface,
-                                  child: const Icon(Icons.shopping_cart,
-                                      color: _UX.primaryDark),
-                                ),
-                                title: Text(
-                                  tanggal,
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 15),
-                                ),
-                                childrenPadding: const EdgeInsets.symmetric(
-                                    horizontal: 12, vertical: 6),
-                                children: [
-                                  FutureBuilder<List<dynamic>>(
-                                    future: _fetchDetail(row['TANGGAL'],
-                                        row['IDSALES'], idPelanggan),
-                                    builder: (context, snapshot) {
-                                      if (snapshot.connectionState ==
-                                          ConnectionState.waiting) {
-                                        return const Padding(
-                                          padding: EdgeInsets.all(8.0),
-                                          child: Center(
-                                              child:
-                                                  CircularProgressIndicator()),
-                                        );
-                                      } else if (snapshot.hasError) {
-                                        return Padding(
-                                          padding: const EdgeInsets.all(8.0),
-                                          child: Text(
-                                              "Error: ${snapshot.error}",
-                                              style: TextStyle(
-                                                  color: _UX.danger,
-                                                  fontWeight: FontWeight.w600)),
-                                        );
-                                      } else if (!snapshot.hasData ||
-                                          snapshot.data!.isEmpty) {
-                                        return const Padding(
-                                          padding: EdgeInsets.all(8.0),
-                                          child: Text("Tidak ada detail."),
-                                        );
-                                      } else {
-                                        final details = snapshot.data!;
-                                        return Column(
-                                          children: [
-                                            // Header row
-                                            Container(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                      vertical: 6,
-                                                      horizontal: 10),
-                                              decoration: BoxDecoration(
-                                                color: _UX.primarySurface,
-                                                borderRadius:
-                                                    BorderRadius.circular(8),
-                                              ),
-                                              child: Row(
-                                                children: const [
-                                                  Expanded(
-                                                      flex: 3,
-                                                      child: Text("Produk",
-                                                          style: TextStyle(
-                                                              fontWeight:
-                                                                  FontWeight
-                                                                      .w700))),
-                                                  Expanded(
-                                                      flex: 2,
-                                                      child: Text("Qty",
-                                                          style: TextStyle(
-                                                              fontWeight:
-                                                                  FontWeight
-                                                                      .w700))),
-                                                  Expanded(
-                                                      flex: 2,
-                                                      child: Text("Harga",
-                                                          style: TextStyle(
-                                                              fontWeight:
-                                                                  FontWeight
-                                                                      .w700))),
-                                                  Expanded(
-                                                      flex: 2,
-                                                      child: Text("Promo",
-                                                          style: TextStyle(
-                                                              fontWeight:
-                                                                  FontWeight
-                                                                      .w700))),
-                                                ],
-                                              ),
-                                            ),
-                                            const SizedBox(height: 4),
-
-                                            // Data rows
-                                            ...details.map((detail) {
-                                              return Container(
-                                                padding:
-                                                    const EdgeInsets.symmetric(
-                                                        vertical: 6,
-                                                        horizontal: 10),
-                                                margin: const EdgeInsets.only(
-                                                    bottom: 2),
-                                                decoration: const BoxDecoration(
-                                                  color: Colors.white,
-                                                  border: Border(
-                                                    bottom: BorderSide(
-                                                        color: _UX.cardBorder,
-                                                        width: 0.6),
-                                                  ),
-                                                ),
-                                                child: Row(
-                                                  children: [
-                                                    Expanded(
-                                                      flex: 3,
-                                                      child: Text(
-                                                        detail['IDITEMPRODUK'] ??
-                                                            "-",
-                                                        style: const TextStyle(
-                                                            fontSize: 13),
-                                                        overflow: TextOverflow
-                                                            .ellipsis,
-                                                      ),
-                                                    ),
-                                                    Expanded(
-                                                      flex: 2,
-                                                      child: Text(
-                                                        "${detail['QTY']} ${detail['UNIT']}",
-                                                        style: const TextStyle(
-                                                            fontSize: 13),
-                                                      ),
-                                                    ),
-                                                    Expanded(
-                                                      flex: 2,
-                                                      child: Text(
-                                                        "Rp ${detail['HARGA']}",
-                                                        style: const TextStyle(
-                                                            fontSize: 13,
-                                                            color: _UX.success,
-                                                            fontWeight:
-                                                                FontWeight
-                                                                    .w600),
-                                                      ),
-                                                    ),
-                                                    Expanded(
-                                                      flex: 2,
-                                                      child: Text(
-                                                        detail['SOURCE'] ?? "-",
-                                                        style: const TextStyle(
-                                                            fontSize: 12,
-                                                            color:
-                                                                _UX.textMuted),
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                              );
-                                            }).toList(),
-                                          ],
-                                        );
-                                      }
-                                    },
-                                  )
-                                ],
-                              ),
-                            );
+                            return _buildHistoryCard(row);
                           },
                         ),
                       ),
@@ -659,8 +484,7 @@ class _DetailFeatureChecklistScreenState
         maxLines: 3,
         onChanged: (val) async {
           setState(() => catatan = val);
-          // Note: The onChanged handler for the text field automatically updates the state.
-          // The data is saved to the DB upon submit.
+          await _updateChecklistToLocal();
         },
         decoration: InputDecoration(
           labelText: 'Catatan',
@@ -708,20 +532,27 @@ class _DetailFeatureChecklistScreenState
     );
   }
 
+  // Widget kustom untuk menggantikan ExpansionTile
+  Widget _buildHistoryCard(Map<String, dynamic> row) {
+    final tanggal = DateFormat("dd MMM yyyy")
+        .format(DateTime.parse(row['TANGGAL']).toLocal());
+
+    return _HistoryCard(
+      title: tanggal,
+      fetchDetails: () =>
+          _fetchDetail(row['TANGGAL'], row['IDSALES'], widget.pelanggan.id),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    // START: Added PopScope to handle back button press.
     return PopScope(
       canPop: true,
       onPopInvoked: (didPop) async {
-        // Only run the logic if the system navigation is popping the route.
         if (didPop) {
-          // Check if any checklist item is checked OR if the notes field has content.
           final hasChanges = _details.any(
                   (detail) => detail.subDetails.any((sub) => sub.isChecked)) ||
               catatanController.text.trim().isNotEmpty;
-
-          // If no changes were made, delete the empty visit transaction.
           if (!hasChanges) {
             await DatabaseHelper.instance.deleteVisit(visitId);
           }
@@ -768,6 +599,201 @@ class _DetailFeatureChecklistScreenState
         bottomNavigationBar: _submitBar(),
       ),
     );
-    // END: Added PopScope.
+  }
+}
+
+// Widget kustom untuk kartu riwayat penjualan
+class _HistoryCard extends StatefulWidget {
+  final String title;
+  final Future<List<dynamic>> Function() fetchDetails;
+
+  const _HistoryCard({
+    required this.title,
+    required this.fetchDetails,
+  });
+
+  @override
+  _HistoryCardState createState() => _HistoryCardState();
+}
+
+class _HistoryCardState extends State<_HistoryCard> {
+  bool _isExpanded = false;
+  Future<List<dynamic>>? _futureDetails;
+
+  void _toggleExpansion() {
+    setState(() {
+      _isExpanded = !_isExpanded;
+      if (_isExpanded && _futureDetails == null) {
+        _futureDetails = widget.fetchDetails();
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: _UX.cardBorder),
+      ),
+      child: InkWell(
+        onTap: _toggleExpansion,
+        splashColor: Colors.transparent, // Menghilangkan efek percikan
+        highlightColor: Colors.transparent, // Menghilangkan efek highlight
+        borderRadius: BorderRadius.circular(12),
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Row(
+                children: [
+                  CircleAvatar(
+                    backgroundColor: _UX.primarySurface,
+                    child:
+                        const Icon(Icons.shopping_cart, color: _UX.primaryDark),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Text(
+                      widget.title,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w700, fontSize: 15),
+                    ),
+                  ),
+                  RotationTransition(
+                    turns: AlwaysStoppedAnimation(_isExpanded ? 0.5 : 0),
+                    child: const Icon(Icons.keyboard_arrow_down),
+                  ),
+                ],
+              ),
+            ),
+            if (_isExpanded)
+              Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                child: FutureBuilder<List<dynamic>>(
+                  future: _futureDetails,
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Padding(
+                        padding: EdgeInsets.all(8.0),
+                        child: Center(child: CircularProgressIndicator()),
+                      );
+                    } else if (snapshot.hasError) {
+                      return Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: Text("Error: ${snapshot.error}",
+                            style: TextStyle(
+                                color: _UX.danger,
+                                fontWeight: FontWeight.w600)),
+                      );
+                    } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                      return const Padding(
+                        padding: EdgeInsets.all(8.0),
+                        child: Text("Tidak ada detail."),
+                      );
+                    } else {
+                      final details = snapshot.data!;
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Header row
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                vertical: 6, horizontal: 10),
+                            decoration: BoxDecoration(
+                              color: _UX.primarySurface,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
+                              children: const [
+                                Expanded(
+                                    flex: 3,
+                                    child: Text("Produk",
+                                        style: TextStyle(
+                                            fontWeight: FontWeight.w700))),
+                                Expanded(
+                                    flex: 2,
+                                    child: Text("Qty",
+                                        style: TextStyle(
+                                            fontWeight: FontWeight.w700))),
+                                Expanded(
+                                    flex: 2,
+                                    child: Text("Harga",
+                                        style: TextStyle(
+                                            fontWeight: FontWeight.w700))),
+                                Expanded(
+                                    flex: 2,
+                                    child: Text("Promo",
+                                        style: TextStyle(
+                                            fontWeight: FontWeight.w700))),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+
+                          // Data rows
+                          ...details.map((detail) {
+                            return Container(
+                              padding: const EdgeInsets.symmetric(
+                                  vertical: 6, horizontal: 10),
+                              margin: const EdgeInsets.only(bottom: 2),
+                              decoration: const BoxDecoration(
+                                color: Colors.white,
+                                border: Border(
+                                  bottom: BorderSide(
+                                      color: _UX.cardBorder, width: 0.6),
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    flex: 3,
+                                    child: Text(
+                                      detail['IDITEMPRODUK'] ?? "-",
+                                      style: const TextStyle(fontSize: 13),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  Expanded(
+                                    flex: 2,
+                                    child: Text(
+                                      "${detail['QTY']} ${detail['UNIT']}",
+                                      style: const TextStyle(fontSize: 13),
+                                    ),
+                                  ),
+                                  Expanded(
+                                    flex: 2,
+                                    child: Text(
+                                      "Rp ${detail['HARGA']}",
+                                      style: const TextStyle(
+                                          fontSize: 13,
+                                          color: _UX.success,
+                                          fontWeight: FontWeight.w600),
+                                    ),
+                                  ),
+                                  Expanded(
+                                    flex: 2,
+                                    child: Text(
+                                      detail['SOURCE'] ?? "-",
+                                      style: const TextStyle(
+                                          fontSize: 12, color: _UX.textMuted),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }).toList(),
+                        ],
+                      );
+                    }
+                  },
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
   }
 }
