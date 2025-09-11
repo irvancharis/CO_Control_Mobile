@@ -101,13 +101,17 @@ class _PelangganListCustomScreenState extends State<PelangganListCustomScreen> {
         final n = (p.nama).toLowerCase();
         final a = (p.alamat).toLowerCase();
         final nc = (p.nocall).toLowerCase();
-        return n.contains(keyword) || a.contains(keyword) || nc.contains(keyword);
+        return n.contains(keyword) ||
+            a.contains(keyword) ||
+            nc.contains(keyword);
       }).toList();
     }
 
     if (_filter != _StatusFilter.all) {
       final wantSelesai = _filter == _StatusFilter.selesai;
-      base = base.where((p) => (visitStatusMap[p.id] ?? false) == wantSelesai).toList();
+      base = base
+          .where((p) => (visitStatusMap[p.id] ?? false) == wantSelesai)
+          .toList();
     }
 
     setState(() => filteredPelangganList = base);
@@ -135,7 +139,8 @@ class _PelangganListCustomScreenState extends State<PelangganListCustomScreen> {
 
     if (keluar == true) {
       if (mounted) {
-        Navigator.of(context).pushNamed('/dashboard', arguments: widget.featureId);
+        Navigator.of(context)
+            .pushNamed('/dashboard', arguments: widget.featureId);
       }
     }
     return false;
@@ -143,7 +148,7 @@ class _PelangganListCustomScreenState extends State<PelangganListCustomScreen> {
 
   Future<void> pilihTanggal(BuildContext context) async {
     final now = DateTime.now();
-    final twoWeeksAgo = now.subtract(const Duration(days: 14));
+    final twoWeeksAgo = now.subtract(const Duration(days: 30));
 
     final picked = await showDatePicker(
       context: context,
@@ -174,7 +179,8 @@ class _PelangganListCustomScreenState extends State<PelangganListCustomScreen> {
     setState(() => isLoading = true);
     try {
       salesList = await DatabaseHelper.instance.getAllSales();
-      salesList.sort((a, b) => a.nama.toLowerCase().compareTo(b.nama.toLowerCase()));
+      salesList
+          .sort((a, b) => a.nama.toLowerCase().compareTo(b.nama.toLowerCase()));
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -203,7 +209,8 @@ class _PelangganListCustomScreenState extends State<PelangganListCustomScreen> {
         orElse: () => salesList.first,
       );
 
-      final pelanggan = await PelangganService().fetchAllPelangganLocal(fitur: widget.featureId);
+      final pelanggan = await PelangganService()
+          .fetchAllPelangganLocal(fitur: widget.featureId);
       await loadVisitStatus(pelanggan);
       await refreshActiveVisit(pelangganListOverride: pelanggan);
 
@@ -231,9 +238,11 @@ class _PelangganListCustomScreenState extends State<PelangganListCustomScreen> {
   Future<void> loadVisitStatus(List<Pelanggan> list) async {
     visitStatusMap.clear();
     for (var pelanggan in list) {
-      final visit = await DatabaseHelper.instance.getVisitByPelangganId(pelanggan.id);
-      final isSelesai =
-          visit != null && visit['selesai'] != null && visit['selesai'].toString().isNotEmpty;
+      final visit =
+          await DatabaseHelper.instance.getVisitByPelangganId(pelanggan.id);
+      final isSelesai = visit != null &&
+          visit['selesai'] != null &&
+          visit['selesai'].toString().isNotEmpty;
       visitStatusMap[pelanggan.id] = isSelesai;
     }
   }
@@ -253,8 +262,8 @@ class _PelangganListCustomScreenState extends State<PelangganListCustomScreen> {
         widget.featureId,
       );
 
-      final downloaded =
-          await PelangganService().fetchAllPelangganLocal(fitur: widget.featureId);
+      final downloaded = await PelangganService()
+          .fetchAllPelangganLocal(fitur: widget.featureId);
 
       await loadVisitStatus(downloaded);
 
@@ -306,7 +315,8 @@ class _PelangganListCustomScreenState extends State<PelangganListCustomScreen> {
     setState(() => isLoading = true);
     try {
       final visits = await DatabaseHelper.instance.getAllVisits();
-      final checklistRows = await DatabaseHelper.instance.getAllVisitChecklist();
+      final checklistRows =
+          await DatabaseHelper.instance.getAllVisitChecklist();
 
       final Map<String, List<Map<String, dynamic>>> groupedChecklist = {};
       for (final row in checklistRows) {
@@ -341,19 +351,19 @@ class _PelangganListCustomScreenState extends State<PelangganListCustomScreen> {
           );
 
           detailMap[idDetail]!.subDetails.add(
-            FeatureSubDetail(
-              id: idSub,
-              nama: '',
-              isChecked: isChecked,
-              seq: 0,
-              idFeatureDetail: idDetail,
-              isActive: 1,
-              isRequired: 1,
-              keterangan: '',
-              icon: '',
-              type: '',
-            ),
-          );
+                FeatureSubDetail(
+                  id: idSub,
+                  nama: '',
+                  isChecked: isChecked,
+                  seq: 0,
+                  idFeatureDetail: idDetail,
+                  isActive: 1,
+                  isRequired: 1,
+                  keterangan: '',
+                  icon: '',
+                  type: '',
+                ),
+              );
         }
 
         final details = detailMap.values.toList();
@@ -366,7 +376,9 @@ class _PelangganListCustomScreenState extends State<PelangganListCustomScreen> {
           latitude: visit['latitude'] ?? '',
           longitude: visit['longitude'] ?? '',
           mulai: DateTime.parse(visit['mulai']),
-          selesai: visit['selesai'] != null ? DateTime.parse(visit['selesai']) : DateTime.now(),
+          selesai: visit['selesai'] != null
+              ? DateTime.parse(visit['selesai'])
+              : DateTime.now(),
           catatan: visit['catatan'] ?? '',
           idFeature: details.isNotEmpty ? details[0].idFeature : '',
           details: details,
@@ -389,7 +401,8 @@ class _PelangganListCustomScreenState extends State<PelangganListCustomScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Semua data berhasil dikirim')),
         );
-        Navigator.of(context).pushNamedAndRemoveUntil('/dashboard', (route) => false);
+        Navigator.of(context)
+            .pushNamedAndRemoveUntil('/dashboard', (route) => false);
       }
     } catch (e) {
       if (mounted) {
@@ -403,7 +416,8 @@ class _PelangganListCustomScreenState extends State<PelangganListCustomScreen> {
   }
 
   // ==== Helper: deteksi kunjungan aktif (selesai null/kosong) ====
-  Future<void> refreshActiveVisit({List<Pelanggan>? pelangganListOverride}) async {
+  Future<void> refreshActiveVisit(
+      {List<Pelanggan>? pelangganListOverride}) async {
     final visits = await DatabaseHelper.instance.getAllVisits();
     String? id;
     for (final v in visits) {
@@ -461,11 +475,13 @@ class _PelangganListCustomScreenState extends State<PelangganListCustomScreen> {
                         children: [
                           Row(
                             children: const [
-                              Icon(Icons.manage_accounts, color: _UX.primaryDark),
+                              Icon(Icons.manage_accounts,
+                                  color: _UX.primaryDark),
                               SizedBox(width: 8),
                               Text('Sales & Tanggal',
                                   style: TextStyle(
-                                      fontWeight: FontWeight.w700, fontSize: 16)),
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 16)),
                             ],
                           ),
                           const SizedBox(height: 12),
@@ -530,7 +546,9 @@ class _PelangganListCustomScreenState extends State<PelangganListCustomScreen> {
                                             a.idCabang == b.idCabang,
                                         filterFn: (s, q) {
                                           final k = (q ?? '').toLowerCase();
-                                          return s.nama.toLowerCase().contains(k) ||
+                                          return s.nama
+                                                  .toLowerCase()
+                                                  .contains(k) ||
                                               s.kodeSales
                                                   .toLowerCase()
                                                   .contains(k);
@@ -542,7 +560,9 @@ class _PelangganListCustomScreenState extends State<PelangganListCustomScreen> {
                                 child: TextField(
                                   controller: dateController,
                                   readOnly: true,
-                                  onTap: isSalesLocked ? null : () => pilihTanggal(context),
+                                  onTap: isSalesLocked
+                                      ? null
+                                      : () => pilihTanggal(context),
                                   decoration: const InputDecoration(
                                     labelText: 'Tanggal',
                                     border: OutlineInputBorder(),
@@ -613,8 +633,14 @@ class _PelangganListCustomScreenState extends State<PelangganListCustomScreen> {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        _InfoChip(icon: Icons.group, label: 'Jumlah', value: '${filteredPelangganList.length}'),
-                        _InfoChip(icon: Icons.confirmation_number, label: 'NoCall', value: lastNocall!),
+                        _InfoChip(
+                            icon: Icons.group,
+                            label: 'Jumlah',
+                            value: '${filteredPelangganList.length}'),
+                        _InfoChip(
+                            icon: Icons.confirmation_number,
+                            label: 'NoCall',
+                            value: lastNocall!),
                       ],
                     ),
                   ),
@@ -656,7 +682,8 @@ class _PelangganListCustomScreenState extends State<PelangganListCustomScreen> {
                   child: SizedBox(
                     height: MediaQuery.of(context).size.height * 0.4,
                     child: const Center(
-                      child: Text('Tidak ada pelanggan', style: TextStyle(color: _UX.textMuted)),
+                      child: Text('Tidak ada pelanggan',
+                          style: TextStyle(color: _UX.textMuted)),
                     ),
                   ),
                 )
@@ -667,13 +694,14 @@ class _PelangganListCustomScreenState extends State<PelangganListCustomScreen> {
                     final p = filteredPelangganList[index];
                     final isSelesai = visitStatusMap[p.id] ?? false;
 
-                    final isActiveVisitThis =
-                        (activeVisitPelangganId != null && p.id == activeVisitPelangganId);
+                    final isActiveVisitThis = (activeVisitPelangganId != null &&
+                        p.id == activeVisitPelangganId);
                     final isDisabled =
                         (activeVisitPelangganId != null && !isActiveVisitThis);
 
                     return Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 6),
                       child: _PelangganCard(
                         index: index + 1,
                         pelanggan: p,
@@ -693,11 +721,13 @@ class _PelangganListCustomScreenState extends State<PelangganListCustomScreen> {
                                           "Pelanggan ini sudah selesai kunjungan. Buka kembali checklist?"),
                                       actions: [
                                         TextButton(
-                                          onPressed: () => Navigator.of(ctx).pop(false),
+                                          onPressed: () =>
+                                              Navigator.of(ctx).pop(false),
                                           child: const Text("Batal"),
                                         ),
                                         ElevatedButton(
-                                          onPressed: () => Navigator.of(ctx).pop(true),
+                                          onPressed: () =>
+                                              Navigator.of(ctx).pop(true),
                                           child: const Text("Lanjutkan"),
                                         ),
                                       ],
@@ -709,7 +739,8 @@ class _PelangganListCustomScreenState extends State<PelangganListCustomScreen> {
                                 await Navigator.push(
                                   context,
                                   MaterialPageRoute(
-                                    builder: (_) => DetailFeatureChecklistScreen(
+                                    builder: (_) =>
+                                        DetailFeatureChecklistScreen(
                                       featureId: widget.featureId,
                                       title: 'Checklist',
                                       pelanggan: p,
@@ -793,7 +824,8 @@ class _InfoChip extends StatelessWidget {
   final IconData icon;
   final String label;
   final String value;
-  const _InfoChip({required this.icon, required this.label, required this.value});
+  const _InfoChip(
+      {required this.icon, required this.label, required this.value});
 
   @override
   Widget build(BuildContext context) {
@@ -864,7 +896,8 @@ class _SearchHeaderDelegate extends SliverPersistentHeaderDelegate {
   double get maxExtent => 76;
 
   @override
-  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
+  Widget build(
+      BuildContext context, double shrinkOffset, bool overlapsContent) {
     // Penting: expand supaya paintExtent >= layoutExtent
     return SizedBox.expand(
       child: Material(
@@ -884,7 +917,8 @@ class _SearchHeaderDelegate extends SliverPersistentHeaderDelegate {
               enabledBorder: _UX.roundedBorder(),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: _UX.primaryDark, width: 1.4),
+                borderSide:
+                    const BorderSide(color: _UX.primaryDark, width: 1.4),
               ),
               isDense: true,
             ),
@@ -926,7 +960,8 @@ class _SegmentedFilterBar extends StatelessWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, size: 18, color: selected ? Colors.white : _UX.primaryDark),
+              Icon(icon,
+                  size: 18, color: selected ? Colors.white : _UX.primaryDark),
               const SizedBox(width: 6),
               Text(
                 text,
@@ -1001,8 +1036,9 @@ class _PelangganCard extends StatelessWidget {
     final alamat = pelanggan.alamat;
 
     final Color cardBg = isDisabled ? _UX.disabledBg : Colors.white;
-    final Color borderColor =
-        isDisabled ? const Color(0xFFE4E4EA) : (isSelesai ? const Color(0xFFD9F2E3) : _UX.cardBorder);
+    final Color borderColor = isDisabled
+        ? const Color(0xFFE4E4EA)
+        : (isSelesai ? const Color(0xFFD9F2E3) : _UX.cardBorder);
     final TextStyle titleStyle = TextStyle(
       fontWeight: FontWeight.w700,
       fontSize: 14.5,
@@ -1015,7 +1051,8 @@ class _PelangganCard extends StatelessWidget {
     return Semantics(
       enabled: !isDisabled,
       label: pelanggan.nama,
-      hint: isDisabled ? 'Terkunci karena ada kunjungan aktif' : 'Buka checklist',
+      hint:
+          isDisabled ? 'Terkunci karena ada kunjungan aktif' : 'Buka checklist',
       child: Tooltip(
         message: isDisabled
             ? 'Terkunci karena ada kunjungan aktif: hanya pelanggan yang aktif yang bisa dibuka'
@@ -1052,13 +1089,16 @@ class _PelangganCard extends StatelessWidget {
                         // Index bubble
                         CircleAvatar(
                           radius: 16,
-                          backgroundColor:
-                              isDisabled ? const Color(0xFFEDEDF1) : _UX.primarySurface,
+                          backgroundColor: isDisabled
+                              ? const Color(0xFFEDEDF1)
+                              : _UX.primarySurface,
                           child: Text(
                             '$index',
                             style: TextStyle(
                               fontWeight: FontWeight.w700,
-                              color: isDisabled ? _UX.disabledText : _UX.primaryDark,
+                              color: isDisabled
+                                  ? _UX.disabledText
+                                  : _UX.primaryDark,
                             ),
                           ),
                         ),
@@ -1125,7 +1165,8 @@ class _StatusPill extends StatelessWidget {
             Icon(Icons.check, size: 18, color: Color(0xFF2EAD54)),
             SizedBox(width: 6),
             Text('Selesai',
-                style: TextStyle(color: Color(0xFF2EAD54), fontWeight: FontWeight.w700)),
+                style: TextStyle(
+                    color: Color(0xFF2EAD54), fontWeight: FontWeight.w700)),
           ],
         ),
       );
@@ -1143,7 +1184,8 @@ class _StatusPill extends StatelessWidget {
           Icon(Icons.play_arrow_rounded, size: 18, color: _UX.primaryDark),
           SizedBox(width: 6),
           Text('Mulai',
-              style: TextStyle(color: _UX.primaryDark, fontWeight: FontWeight.w700)),
+              style: TextStyle(
+                  color: _UX.primaryDark, fontWeight: FontWeight.w700)),
         ],
       ),
     );
@@ -1169,7 +1211,8 @@ class _LockPill extends StatelessWidget {
           Icon(Icons.lock, size: 18, color: _UX.disabledText),
           SizedBox(width: 6),
           Text('Terkunci',
-              style: TextStyle(color: _UX.disabledText, fontWeight: FontWeight.w700)),
+              style: TextStyle(
+                  color: _UX.disabledText, fontWeight: FontWeight.w700)),
         ],
       ),
     );
@@ -1195,7 +1238,8 @@ class _ActivePill extends StatelessWidget {
           Icon(Icons.lock_clock, size: 18, color: Color(0xFF8A6D3B)),
           SizedBox(width: 6),
           Text('Sedang dikunjungi',
-              style: TextStyle(color: Color(0xFF8A6D3B), fontWeight: FontWeight.w700)),
+              style: TextStyle(
+                  color: Color(0xFF8A6D3B), fontWeight: FontWeight.w700)),
         ],
       ),
     );

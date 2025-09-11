@@ -15,18 +15,23 @@ class SubmitVisitLocalService {
     required int idSales,
     required String nocall,
   }) async {
-    // 1. Insert ke tabel visit (jika belum ada)
-    await DatabaseHelper.instance.insertVisitIfNotExists(
-      idVisit: idVisit,
-      idPelanggan: idPelanggan,
-      idSpv: idSpv,
-      idSales: idSales,
-      noCall: nocall,
-      latitude: latitude,
-      longitude: longitude,
-    );
+    // Cek apakah visit dengan idVisit sudah ada
+    final exists = await DatabaseHelper.instance.visitExists(idPelanggan);
 
-    // 3. Tandai visit sebagai selesai + catatan opsional
+    if (!exists) {
+      // Insert hanya jika belum ada
+      await DatabaseHelper.instance.insertVisitIfNotExists(
+        idVisit: idVisit,
+        idPelanggan: idPelanggan,
+        idSpv: idSpv,
+        idSales: idSales,
+        noCall: nocall,
+        latitude: latitude,
+        longitude: longitude,
+      );
+    }
+
+    // Update visit jadi completed + simpan catatan
     await DatabaseHelper.instance.markVisitAsCompleted(
       idVisit: idVisit,
       catatan: catatan,

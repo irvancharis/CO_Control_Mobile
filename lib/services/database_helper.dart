@@ -277,6 +277,17 @@ class DatabaseHelper {
     }
   }
 
+  Future<bool> visitExists(String idPelanggan) async {
+    final db = await database;
+    final result = await db.query(
+      'visit',
+      where: 'idpelanggan = ?',
+      whereArgs: [idPelanggan],
+      limit: 1,
+    );
+    return result.isNotEmpty;
+  }
+
   // Tambahkan ini di dalam class DatabaseHelper
   Future<void> deleteVisit(String idVisit) async {
     final db = await database;

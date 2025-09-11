@@ -5,6 +5,8 @@ import 'package:geolocator/geolocator.dart';
 import 'package:uuid/uuid.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
+import '../config/server.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../models/feature_detail_model.dart';
 import '../models/feature_subdetail_model.dart';
@@ -89,18 +91,48 @@ class _DetailFeatureChecklistScreenState
 
   Future<void> getCurrentLocation() async {
     final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) return;
+    if (!serviceEnabled) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Layanan lokasi tidak diaktifkan.')),
+      );
+      return;
+    }
 
     var permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) return;
+      if (permission == LocationPermission.denied) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Izin lokasi ditolak.')),
+        );
+        return;
+      }
     }
-    if (permission == LocationPermission.deniedForever) return;
+    if (permission == LocationPermission.deniedForever) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text(
+                'Izin lokasi ditolak secara permanen, tidak dapat meminta izin.')),
+      );
+      return;
+    }
 
-    final position = await Geolocator.getCurrentPosition();
-    latitude = position.latitude.toString();
-    longitude = position.longitude.toString();
+    try {
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+      latitude = position.latitude.toString();
+      longitude = position.longitude.toString();
+    } catch (e) {
+      debugPrint('Error getting location: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Gagal mendapatkan lokasi: $e')),
+      );
+    }
   }
 
   Future<void> checkOrCreateVisit() async {
@@ -176,27 +208,12 @@ class _DetailFeatureChecklistScreenState
     }
   }
 
-  // NOTE: This method is not used directly, as the onChanged handlers already save the data.
-  // It's kept here for reference if a bulk update is ever needed.
-  Future<void> _updateChecklistToLocal() async {
-    for (final detail in _details) {
-      for (final sub in detail.subDetails) {
-        await DatabaseHelper.instance.upsertChecklistDetail(
-          idVisit: visitId,
-          idFeature: widget.featureId,
-          idFeatureDetail: detail.id,
-          idFeatureSubDetail: sub.id,
-          isChecked: sub.isChecked,
-        );
-      }
-    }
-  }
-
   Future<void> submitChecklist() async {
     if (idSpv == null ||
         latitude == null ||
         longitude == null ||
         mulai == null) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Data supervisor/posisi belum lengkap!')),
       );
@@ -254,7 +271,7 @@ class _DetailFeatureChecklistScreenState
   Future<void> _fetchHistorySelling() async {
     final idPelanggan = widget.pelanggan.id;
     final url =
-        Uri.parse("http://192.168.3.253:3000/DATAHISTORYSELLING/$idPelanggan");
+        Uri.parse("${ServerConfig.baseUrl}/DATAHISTORYSELLING/$idPelanggan");
 
     try {
       final response = await http.get(url);
@@ -318,13 +335,19 @@ class _DetailFeatureChecklistScreenState
           },
         );
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
             content:
-                Text("Gagal load history selling (${response.statusCode})")));
+                Text("Gagal load history selling (${response.statusCode})"),
+          ),
+        );
       }
     } catch (e) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text("Fetch error: $e")));
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Fetch error: $e")),
+      );
     }
   }
 
@@ -334,7 +357,7 @@ class _DetailFeatureChecklistScreenState
         DateFormat("yyyy-MM-dd").format(DateTime.parse(tanggal).toLocal());
 
     final url = Uri.parse(
-        "http://192.168.3.253:3000/DETAILHISTORYSELLING/$idSales/$tgl/$idPelanggan");
+        "${ServerConfig.baseUrl}/DETAILHISTORYSELLING/$idSales/$tgl/$idPelanggan");
 
     final response = await http.get(url);
     if (response.statusCode == 200) {
@@ -395,6 +418,26 @@ class _DetailFeatureChecklistScreenState
                     ),
                   ],
                 ),
+              ),
+              // 🔥 Tambahan tombol lokasi
+              IconButton(
+                icon: const Icon(Icons.location_on, color: Colors.redAccent),
+                onPressed: () async {
+                  final lat = widget.pelanggan.latitude;
+                  final lng = widget.pelanggan.longitude;
+                  final googleMapsUrl =
+                      "https://www.google.com/maps/search/?api=1&query=$lat,$lng";
+
+                  final uri = Uri.parse(googleMapsUrl);
+                  if (await canLaunchUrl(uri)) {
+                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                          content: Text("Tidak bisa buka Google Maps")),
+                    );
+                  }
+                },
               ),
             ],
           ),
@@ -482,10 +525,6 @@ class _DetailFeatureChecklistScreenState
       child: TextField(
         controller: catatanController,
         maxLines: 3,
-        onChanged: (val) async {
-          setState(() => catatan = val);
-          await _updateChecklistToLocal();
-        },
         decoration: InputDecoration(
           labelText: 'Catatan',
           hintText: 'Tambahkan catatan kunjungan...',
@@ -532,7 +571,6 @@ class _DetailFeatureChecklistScreenState
     );
   }
 
-  // Widget kustom untuk menggantikan ExpansionTile
   Widget _buildHistoryCard(Map<String, dynamic> row) {
     final tanggal = DateFormat("dd MMM yyyy")
         .format(DateTime.parse(row['TANGGAL']).toLocal());
@@ -639,8 +677,8 @@ class _HistoryCardState extends State<_HistoryCard> {
       ),
       child: InkWell(
         onTap: _toggleExpansion,
-        splashColor: Colors.transparent, // Menghilangkan efek percikan
-        highlightColor: Colors.transparent, // Menghilangkan efek highlight
+        splashColor: Colors.transparent,
+        highlightColor: Colors.transparent,
         borderRadius: BorderRadius.circular(12),
         child: Column(
           children: [
@@ -698,7 +736,6 @@ class _HistoryCardState extends State<_HistoryCard> {
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // Header row
                           Container(
                             padding: const EdgeInsets.symmetric(
                                 vertical: 6, horizontal: 10),
@@ -732,8 +769,6 @@ class _HistoryCardState extends State<_HistoryCard> {
                             ),
                           ),
                           const SizedBox(height: 4),
-
-                          // Data rows
                           ...details.map((detail) {
                             return Container(
                               padding: const EdgeInsets.symmetric(
