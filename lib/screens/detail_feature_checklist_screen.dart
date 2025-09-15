@@ -508,7 +508,7 @@ class _DetailFeatureChecklistScreenState
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(fontWeight: FontWeight.w600),
                     ),
-                    controlAffinity: ListTileControlAffinity.leading,
+                    controlAffinity: ListTileControlAffinity.trailing,
                     contentPadding: const EdgeInsets.symmetric(horizontal: 16),
                     activeColor: _UX.primaryDark,
                   )),
@@ -658,6 +658,9 @@ class _HistoryCardState extends State<_HistoryCard> {
   bool _isExpanded = false;
   Future<List<dynamic>>? _futureDetails;
 
+  // formatter angka dengan locale Indonesia
+  final NumberFormat _currencyFormatter = NumberFormat.decimalPattern('id');
+
   void _toggleExpansion() {
     setState(() {
       _isExpanded = !_isExpanded;
@@ -746,7 +749,7 @@ class _HistoryCardState extends State<_HistoryCard> {
                             child: Row(
                               children: const [
                                 Expanded(
-                                    flex: 3,
+                                    flex: 2,
                                     child: Text("Produk",
                                         style: TextStyle(
                                             fontWeight: FontWeight.w700))),
@@ -770,6 +773,11 @@ class _HistoryCardState extends State<_HistoryCard> {
                           ),
                           const SizedBox(height: 4),
                           ...details.map((detail) {
+                            // ambil harga dan format
+                            final hargaRaw = detail['HARGA'] ?? 0;
+                            final formattedHarga =
+                                _currencyFormatter.format(hargaRaw);
+
                             return Container(
                               padding: const EdgeInsets.symmetric(
                                   vertical: 6, horizontal: 10),
@@ -784,7 +792,7 @@ class _HistoryCardState extends State<_HistoryCard> {
                               child: Row(
                                 children: [
                                   Expanded(
-                                    flex: 3,
+                                    flex: 2,
                                     child: Text(
                                       detail['IDITEMPRODUK'] ?? "-",
                                       style: const TextStyle(fontSize: 13),
@@ -801,7 +809,7 @@ class _HistoryCardState extends State<_HistoryCard> {
                                   Expanded(
                                     flex: 2,
                                     child: Text(
-                                      "Rp ${detail['HARGA']}",
+                                      "Rp $formattedHarga",
                                       style: const TextStyle(
                                           fontSize: 13,
                                           color: _UX.success,
