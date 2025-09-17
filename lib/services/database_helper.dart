@@ -228,8 +228,12 @@ class DatabaseHelper {
 
     List<FeatureDetail> result = [];
     for (final d in detailMaps) {
-      final subs = await db.query('feature_subdetail',
-          where: 'idFeatureDetail = ?', whereArgs: [d['id']]);
+      final subs = await db.query(
+        'feature_subdetail',
+        orderBy: 'seq ASC',
+        where: 'idFeatureDetail = ?',
+        whereArgs: [d['id']],
+      );
       final subList = subs.map((e) => FeatureSubDetail.fromMap(e)).toList();
       result.add(FeatureDetail.fromMap(d, subList));
     }
@@ -245,7 +249,10 @@ class DatabaseHelper {
 
   Future<List<FeatureSubDetail>> getAllFeatureSubDetails() async {
     final db = await database;
-    final maps = await db.query('feature_subdetail');
+    final maps = await db.query(
+      'feature_subdetail',
+      orderBy: 'seq ASC',
+    );
     return maps.map((e) => FeatureSubDetail.fromMap(e)).toList();
   }
 
@@ -385,6 +392,19 @@ class DatabaseHelper {
     if (result.isNotEmpty) return result.first;
     return null;
   }
+
+
+  Future<void> deleteVisitsWithoutChecklist() async {
+    final db = await instance.database;
+    // hapus visit yang tidak punya checklist
+    await db.delete(
+      'visit',
+      where: 'id_visit NOT IN (SELECT DISTINCT id_visit FROM visit_checklist)',
+    );
+  }
+
+
+
 
   Future<List<Map<String, dynamic>>> getAllVisits() async {
     final db = await database;

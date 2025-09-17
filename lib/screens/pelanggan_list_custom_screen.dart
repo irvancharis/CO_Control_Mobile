@@ -1,10 +1,3 @@
-// Full updated script with unified styling (UX tokens), searchable Sales picker,
-// sticky search pelanggan, segmented filter, active-visit locking visuals,
-// and consistent cards/badges.
-//
-// Dependensi:
-//   dropdown_search: ^5.x
-
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:dropdown_search/dropdown_search.dart';
@@ -418,6 +411,7 @@ class _PelangganListCustomScreenState extends State<PelangganListCustomScreen> {
   // ==== Helper: deteksi kunjungan aktif (selesai null/kosong) ====
   Future<void> refreshActiveVisit(
       {List<Pelanggan>? pelangganListOverride}) async {
+    await DatabaseHelper.instance.deleteVisitsWithoutChecklist();
     final visits = await DatabaseHelper.instance.getAllVisits();
     String? id;
     for (final v in visits) {

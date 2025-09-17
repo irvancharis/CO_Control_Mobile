@@ -384,6 +384,7 @@ class _PelangganListScreenState extends State<PelangganListScreen> {
   // ============ Active-visit detect ============
   Future<void> refreshActiveVisit(
       {List<Pelanggan>? pelangganListOverride}) async {
+    await DatabaseHelper.instance.deleteVisitsWithoutChecklist();
     final visits = await DatabaseHelper.instance.getAllVisits();
     String? id;
     for (final v in visits) {

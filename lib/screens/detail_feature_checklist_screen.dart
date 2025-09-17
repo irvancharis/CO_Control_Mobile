@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:geolocator/geolocator.dart';
@@ -7,6 +9,9 @@ import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import '../config/server.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../models/feature_detail_model.dart';
 import '../models/feature_subdetail_model.dart';
@@ -69,6 +74,9 @@ class _DetailFeatureChecklistScreenState
   bool isLoadingChecklist = true;
   late TextEditingController catatanController;
 
+  // PASTIKAN hanya 1 deklarasi ini dan tipenya File?
+  File? _fotoFile;
+
   @override
   void initState() {
     super.initState();
@@ -84,13 +92,87 @@ class _DetailFeatureChecklistScreenState
     super.dispose();
   }
 
+  // ==================== FOTO: ambil & kompres (konversi XFile -> File) ====================
+  Future<void> _ambilFoto() async {
+    try {
+      final ImagePicker picker = ImagePicker();
+      final XFile? pickedFile =
+          await picker.pickImage(source: ImageSource.camera);
+
+      if (pickedFile == null) return;
+
+      // konversi XFile -> File
+      final File originalFile = File(pickedFile.path);
+
+      // buat path sementara untuk hasil kompres
+      final Directory dir = await getTemporaryDirectory();
+      final String targetPath = "${dir.path}/$visitId.jpg";
+
+      // kompres
+      final XFile? compressedXFile =
+          await FlutterImageCompress.compressAndGetFile(
+        originalFile.path,
+        targetPath,
+        quality: 50,
+      );
+
+// konversi ke File
+      final File? compressedFile =
+          compressedXFile != null ? File(compressedXFile.path) : null;
+
+      if (!mounted) return;
+
+      setState(() {
+        // kalau hasil kompres null, fallback ke foto asli
+        _fotoFile = compressedFile ?? originalFile;
+      });
+    } catch (e) {
+      debugPrint('Error ambil/kompres foto: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Gagal ambil foto: $e')),
+      );
+    }
+  }
+
+  // ==================== FOTO: upload ke server ====================
+  Future<String?> _uploadFoto(File foto) async {
+    try {
+      final Uri uri = Uri.parse("${ServerConfig.baseUrl}/upload-selfie");
+
+      final request = http.MultipartRequest("POST", uri)
+        ..files.add(
+          await http.MultipartFile.fromPath(
+            "selfie",
+            foto.path,
+            filename: "$visitId.jpg", // <- jadikan nama file sesuai id_visit
+          ),
+        );
+
+      final response = await request.send();
+      final respStr = await response.stream.bytesToString();
+
+      if (response.statusCode == 200) {
+        // karena kita sudah tentukan nama file, langsung return saja
+        return "$visitId.jpg";
+      } else {
+        debugPrint("Upload gagal: ${response.statusCode} - $respStr");
+        return null;
+      }
+    } catch (e) {
+      debugPrint("Error upload foto: $e");
+      return null;
+    }
+  }
+
+  // ==================== PREFS & LOCATION ====================
   Future<void> getSpvFromPrefs() async {
     final prefs = await SharedPreferences.getInstance();
     idSpv = prefs.getString('user_id');
   }
 
   Future<void> getCurrentLocation() async {
-    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    final bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -121,7 +203,7 @@ class _DetailFeatureChecklistScreenState
     }
 
     try {
-      final position = await Geolocator.getCurrentPosition(
+      final Position position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
       );
       latitude = position.latitude.toString();
@@ -135,6 +217,7 @@ class _DetailFeatureChecklistScreenState
     }
   }
 
+  // ==================== VISIT: check/create ====================
   Future<void> checkOrCreateVisit() async {
     final existing =
         await DatabaseHelper.instance.getVisitByPelangganAndFeature(
@@ -170,6 +253,7 @@ class _DetailFeatureChecklistScreenState
     });
   }
 
+  // ==================== LOAD CHECKLIST ====================
   Future<void> loadChecklist() async {
     setState(() => isLoadingChecklist = true);
     try {
@@ -208,7 +292,10 @@ class _DetailFeatureChecklistScreenState
     }
   }
 
-  Future<void> submitChecklist() async {
+  // ==================== SUBMIT CHECKLIST (simpan lokal) ====================
+  Future<void> submitChecklist(String selfieFilename) async {
+    catatan = catatanController.text.trim();
+
     if (idSpv == null ||
         latitude == null ||
         longitude == null ||
@@ -223,51 +310,60 @@ class _DetailFeatureChecklistScreenState
     setState(() => isSubmitting = true);
     final selesai = DateTime.now();
 
-    await SubmitVisitLocalService.saveChecklistToLocal(
-      idVisit: visitId,
-      tanggal: DateTime.now(),
-      mulai: mulai!,
-      selesai: selesai,
-      idSpv: idSpv!,
-      idPelanggan: widget.pelanggan.id,
-      latitude: latitude,
-      longitude: longitude,
-      catatan: catatan,
-      idFeature: widget.featureId,
-      idSales: 0,
-      nocall: widget.pelanggan.nocall,
-    );
+    try {
+      await SubmitVisitLocalService.saveChecklistToLocal(
+        idVisit: visitId,
+        tanggal: DateTime.now(),
+        mulai: mulai!,
+        selesai: selesai,
+        idSpv: idSpv!,
+        idPelanggan: widget.pelanggan.id,
+        latitude: latitude,
+        longitude: longitude,
+        catatan: catatan,
+        idFeature: widget.featureId,
+        idSales: 0,
+        nocall: widget.pelanggan.nocall,
+      );
 
-    if (!mounted) return;
-    setState(() => isSubmitting = false);
+      if (!mounted) return;
+      setState(() => isSubmitting = false);
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Checklist berhasil disimpan secara lokal'),
-        backgroundColor: Colors.green,
-      ),
-    );
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Checklist berhasil disimpan secara lokal'),
+          backgroundColor: Colors.green,
+        ),
+      );
 
-    final isCustom = widget.featureType.toLowerCase() == 'custom';
-    final screen = isCustom
-        ? PelangganListCustomScreen(
-            featureId: widget.featureId,
-            title: widget.title,
-            featureType: widget.featureType,
-          )
-        : PelangganListScreen(
-            featureId: widget.featureId,
-            title: widget.title,
-            featureType: widget.featureType,
-          );
+      final isCustom = widget.featureType.toLowerCase() == 'custom';
+      final screen = isCustom
+          ? PelangganListCustomScreen(
+              featureId: widget.featureId,
+              title: widget.title,
+              featureType: widget.featureType,
+            )
+          : PelangganListScreen(
+              featureId: widget.featureId,
+              title: widget.title,
+              featureType: widget.featureType,
+            );
 
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (_) => screen),
-    );
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => screen),
+      );
+    } catch (e) {
+      debugPrint('submitChecklist error: $e');
+      if (!mounted) return;
+      setState(() => isSubmitting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Gagal menyimpan checklist: $e')),
+      );
+    }
   }
 
-  // === FETCH HISTORY SELLING ===
+  // ==================== HISTORY SELLING ====================
   Future<void> _fetchHistorySelling() async {
     final idPelanggan = widget.pelanggan.id;
     final url =
@@ -419,10 +515,9 @@ class _DetailFeatureChecklistScreenState
                   ],
                 ),
               ),
-              // 🔥 Tambahan tombol lokasi
-              IconButton(
-                icon: const Icon(Icons.location_on, color: Colors.redAccent),
-                onPressed: () async {
+              InkWell(
+                borderRadius: BorderRadius.circular(30),
+                onTap: () async {
                   final lat = widget.pelanggan.latitude;
                   final lng = widget.pelanggan.longitude;
                   final googleMapsUrl =
@@ -438,6 +533,12 @@ class _DetailFeatureChecklistScreenState
                     );
                   }
                 },
+                child: CircleAvatar(
+                  radius: 20,
+                  backgroundColor: Colors.redAccent.withOpacity(0.15),
+                  child: const Icon(Icons.location_on,
+                      color: Colors.redAccent, size: 22),
+                ),
               ),
             ],
           ),
@@ -485,33 +586,51 @@ class _DetailFeatureChecklistScreenState
                 title: Text(
                   detail.nama,
                   style: const TextStyle(
-                      fontWeight: FontWeight.w700, fontSize: 15),
+                      fontWeight: FontWeight.w700, fontSize: 14),
                 ),
               ),
-              if (detail.subDetails.isNotEmpty)
+              if (detail.subDetails.isNotEmpty) ...[
                 const Divider(height: 0, color: Color(0xFFEDECF4)),
-              ...detail.subDetails.map((sub) => CheckboxListTile(
-                    value: sub.isChecked,
-                    onChanged: (val) async {
-                      setState(() => sub.isChecked = val ?? false);
-                      await DatabaseHelper.instance.upsertChecklistDetail(
-                        idVisit: visitId,
-                        idFeature: widget.featureId,
-                        idFeatureDetail: detail.id,
-                        idFeatureSubDetail: sub.id,
-                        isChecked: sub.isChecked,
-                      );
-                    },
-                    title: Text(
-                      sub.nama,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.w600),
-                    ),
-                    controlAffinity: ListTileControlAffinity.trailing,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-                    activeColor: _UX.primaryDark,
-                  )),
+                ...detail.subDetails.asMap().entries.map((entry) {
+                  final idx = entry.key;
+                  final sub = entry.value;
+
+                  return Column(
+                    children: [
+                      CheckboxListTile(
+                        value: sub.isChecked,
+                        onChanged: (val) async {
+                          setState(() => sub.isChecked = val ?? false);
+                          await DatabaseHelper.instance.upsertChecklistDetail(
+                            idVisit: visitId,
+                            idFeature: widget.featureId,
+                            idFeatureDetail: detail.id,
+                            idFeatureSubDetail: sub.id,
+                            isChecked: sub.isChecked,
+                          );
+                        },
+                        title: Text(
+                          sub.nama,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w500,
+                            fontSize: 12,
+                          ),
+                        ),
+                        controlAffinity: ListTileControlAffinity.trailing,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
+                        activeColor: _UX.primaryDark,
+                      ),
+                      if (idx != detail.subDetails.length - 1)
+                        const Divider(height: 0.5, color: Color(0xFFEDECF4)),
+                    ],
+                  );
+                }).toList(),
+              ]
             ],
           ),
         ),
@@ -551,7 +670,29 @@ class _DetailFeatureChecklistScreenState
             ? const SizedBox(
                 height: 52, child: Center(child: CircularProgressIndicator()))
             : ElevatedButton.icon(
-                onPressed: submitChecklist,
+                onPressed: () async {
+                  // ambil foto
+                  await _ambilFoto();
+                  if (_fotoFile == null) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                          content: Text('Foto wajib diambil sebelum submit!')),
+                    );
+                    return;
+                  }
+
+                  // upload foto
+                  final filename = await _uploadFoto(_fotoFile!);
+                  if (filename == null) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Upload foto gagal!')),
+                    );
+                    return;
+                  }
+
+                  // lanjut submit checklist (simpan lokal)
+                  await submitChecklist(filename);
+                },
                 icon:
                     const Icon(Icons.check_circle_outline, color: Colors.white),
                 label: const Text('SELESAI'),
@@ -624,9 +765,11 @@ class _DetailFeatureChecklistScreenState
                   ),
                   SliverToBoxAdapter(
                       child: _sectionHeader('Checklist', icon: Icons.task_alt)),
-                  SliverList.builder(
-                    itemCount: _details.length,
-                    itemBuilder: (context, i) => _buildDetailCard(_details[i]),
+                  SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (context, i) => _buildDetailCard(_details[i]),
+                      childCount: _details.length,
+                    ),
                   ),
                   SliverToBoxAdapter(
                       child: _sectionHeader('Catatan', icon: Icons.edit_note)),
@@ -640,7 +783,7 @@ class _DetailFeatureChecklistScreenState
   }
 }
 
-// Widget kustom untuk kartu riwayat penjualan
+// History card widget (tetap sama)
 class _HistoryCard extends StatefulWidget {
   final String title;
   final Future<List<dynamic>> Function() fetchDetails;
@@ -658,7 +801,6 @@ class _HistoryCardState extends State<_HistoryCard> {
   bool _isExpanded = false;
   Future<List<dynamic>>? _futureDetails;
 
-  // formatter angka dengan locale Indonesia
   final NumberFormat _currencyFormatter = NumberFormat.decimalPattern('id');
 
   void _toggleExpansion() {
@@ -773,7 +915,6 @@ class _HistoryCardState extends State<_HistoryCard> {
                           ),
                           const SizedBox(height: 4),
                           ...details.map((detail) {
-                            // ambil harga dan format
                             final hargaRaw = detail['HARGA'] ?? 0;
                             final formattedHarga =
                                 _currencyFormatter.format(hargaRaw);

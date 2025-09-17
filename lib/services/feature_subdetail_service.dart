@@ -25,7 +25,7 @@ class FeatureSubDetailService {
   Future<List<FeatureSubDetail>> getAllFromDb() async {
     final dbClient = await db.database;
     final List<Map<String, dynamic>> maps =
-        await dbClient.query('feature_subdetail');
+        await dbClient.query('feature_subdetail', orderBy: 'seq ASC');
     return maps.map((e) => FeatureSubDetail.fromMap(e)).toList();
   }
 
@@ -33,8 +33,12 @@ class FeatureSubDetailService {
   Future<List<FeatureSubDetail>> getByFeatureDetailId(
       int idFeatureDetail) async {
     final dbClient = await db.database;
-    final maps = await dbClient.query('feature_subdetail',
-        where: 'idFeatureDetail = ?', whereArgs: [idFeatureDetail]);
+    final maps = await dbClient.query(
+      'feature_subdetail',
+      where: 'idFeatureDetail = ?',
+      whereArgs: [idFeatureDetail],
+      orderBy: 'seq ASC',
+    );
     return maps.map((e) => FeatureSubDetail.fromMap(e)).toList();
   }
 
