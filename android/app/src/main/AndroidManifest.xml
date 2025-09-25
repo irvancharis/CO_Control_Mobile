@@ -14,7 +14,7 @@
 
 
     <application
-        android:label="co_control"
+        android:label="Co Control"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

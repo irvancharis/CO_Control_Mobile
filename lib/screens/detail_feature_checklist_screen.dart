@@ -65,6 +65,8 @@ class _DetailFeatureChecklistScreenState
     extends State<DetailFeatureChecklistScreen> {
   List<FeatureDetail> _details = [];
   String? idSpv;
+  String? idSalesStr;
+  int? idSales;
   String? latitude;
   String? longitude;
   DateTime? mulai;
@@ -169,6 +171,12 @@ class _DetailFeatureChecklistScreenState
   Future<void> getSpvFromPrefs() async {
     final prefs = await SharedPreferences.getInstance();
     idSpv = prefs.getString('user_id');
+    idSalesStr = prefs.getString('selectedSalesId');
+
+    // Konversi ke int
+    if (idSalesStr != null) {
+      idSales = int.tryParse(idSalesStr!);
+    }
   }
 
   Future<void> getCurrentLocation() async {
@@ -233,7 +241,7 @@ class _DetailFeatureChecklistScreenState
         idVisit: visitId,
         idPelanggan: widget.pelanggan.id,
         idSpv: idSpv ?? '',
-        idSales: 0,
+        idSales: idSales ?? 0,
         noCall: widget.pelanggan.nocall ?? '',
         latitude: latitude,
         longitude: longitude,
@@ -292,6 +300,21 @@ class _DetailFeatureChecklistScreenState
     }
   }
 
+  Future<void> _saveAllChecklistDetails() async {
+    // Pastikan semua kombinasi detail-subdetail tersimpan
+    for (final detail in _details) {
+      for (final sub in detail.subDetails) {
+        await DatabaseHelper.instance.upsertChecklistDetail(
+          idVisit: visitId,
+          idFeature: widget.featureId,
+          idFeatureDetail: detail.id,
+          idFeatureSubDetail: sub.id,
+          isChecked: sub.isChecked, // true jika dicentang, false jika tidak
+        );
+      }
+    }
+  }
+
   // ==================== SUBMIT CHECKLIST (simpan lokal) ====================
   Future<void> submitChecklist(String selfieFilename) async {
     catatan = catatanController.text.trim();
@@ -311,6 +334,9 @@ class _DetailFeatureChecklistScreenState
     final selesai = DateTime.now();
 
     try {
+      // >>>>> Tambahan penting: persist semua subdetail termasuk yang tidak dicentang
+      await _saveAllChecklistDetails();
+
       await SubmitVisitLocalService.saveChecklistToLocal(
         idVisit: visitId,
         tanggal: DateTime.now(),
@@ -322,7 +348,7 @@ class _DetailFeatureChecklistScreenState
         longitude: longitude,
         catatan: catatan,
         idFeature: widget.featureId,
-        idSales: 0,
+        idSales: idSales ?? 0,
         nocall: widget.pelanggan.nocall,
       );
 
