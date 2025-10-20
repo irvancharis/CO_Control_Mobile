@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:geolocator/geolocator.dart';
@@ -9,7 +10,6 @@ import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import '../config/server.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -94,42 +94,73 @@ class _DetailFeatureChecklistScreenState
     super.dispose();
   }
 
+  Future<void> _sendTelegramLog(String message, {int? topicId}) async {
+    final String botToken = ServerConfig.telegramBotToken;
+    final String chatId = ServerConfig.telegramChatId;
+
+    final Uri url =
+        Uri.parse("https://api.telegram.org/bot$botToken/sendMessage");
+
+    try {
+      final body = <String, dynamic>{
+        "chat_id": chatId,
+        "text": message,
+        "parse_mode": "HTML",
+      };
+
+      // Pastikan tipe sesuai (convert ke String)
+      if (topicId != null) {
+        body["message_thread_id"] = topicId.toString();
+      }
+
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      );
+
+      if (response.statusCode == 200) {
+        debugPrint(
+            "✅ Log terkirim ke Telegram (topicId: ${topicId ?? 'utama'})");
+      } else {
+        debugPrint("⚠️ Gagal kirim log: ${response.body}");
+      }
+    } catch (e) {
+      debugPrint("❌ Error kirim log Telegram: $e");
+    }
+  }
+
   // ==================== FOTO: ambil & kompres (konversi XFile -> File) ====================
   Future<void> _ambilFoto() async {
     try {
-      final ImagePicker picker = ImagePicker();
-      final XFile? pickedFile =
-          await picker.pickImage(source: ImageSource.camera);
-
-      if (pickedFile == null) return;
-
-      // konversi XFile -> File
-      final File originalFile = File(pickedFile.path);
-
-      // buat path sementara untuk hasil kompres
-      final Directory dir = await getTemporaryDirectory();
-      final String targetPath = "${dir.path}/$visitId.jpg";
-
-      // kompres
-      final XFile? compressedXFile =
-          await FlutterImageCompress.compressAndGetFile(
-        originalFile.path,
-        targetPath,
-        quality: 50,
+      final File? result = await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => CustomCameraScreen(visitId: visitId),
+        ),
       );
 
-// konversi ke File
-      final File? compressedFile =
-          compressedXFile != null ? File(compressedXFile.path) : null;
+      if (result == null) return;
 
-      if (!mounted) return;
+      // Kompres hasil foto sebelum simpan/upload (opsional)
+      final Directory dir = await getTemporaryDirectory();
+      final String targetPath = "${dir.path}/compressed_$visitId.jpg";
+
+      final XFile? compressedXFile =
+          await FlutterImageCompress.compressAndGetFile(
+        result.path,
+        targetPath,
+        quality: 60,
+      );
 
       setState(() {
-        // kalau hasil kompres null, fallback ke foto asli
-        _fotoFile = compressedFile ?? originalFile;
+        _fotoFile = File(compressedXFile?.path ?? result.path);
       });
+
+      debugPrint(
+          "✅ Foto berhasil diambil dari kamera depan: ${_fotoFile!.path}");
     } catch (e) {
-      debugPrint('Error ambil/kompres foto: $e');
+      debugPrint('Error ambil foto: $e');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Gagal ambil foto: $e')),
@@ -333,8 +364,16 @@ class _DetailFeatureChecklistScreenState
     setState(() => isSubmitting = true);
     final selesai = DateTime.now();
 
+    // Tentukan topicId berdasarkan featureId
+    int? topicId;
+    if (widget.featureId == "f217238b-122d-4cf6-b822-ed61501d9539") {
+      topicId = 3; // Transaksi Join
+    } else if (widget.featureId == "f86527a3-8284-4069-8b06-f6bd52679b66") {
+      topicId = 2; // Transaksi Control
+    }
+
     try {
-      // >>>>> Tambahan penting: persist semua subdetail termasuk yang tidak dicentang
+      // Simpan checklist
       await _saveAllChecklistDetails();
 
       await SubmitVisitLocalService.saveChecklistToLocal(
@@ -362,6 +401,44 @@ class _DetailFeatureChecklistScreenState
         ),
       );
 
+      // =============== ✅ LOG BERHASIL KE TELEGRAM ==================
+      final logMessage = """
+<b>✅ TRANSAKSI BERHASIL</b>
+
+<pre>
+📋 Fitur :
+${widget.featureId}
+
+🆔 ID Visit :
+$visitId
+
+🏪 Pelanggan :
+${widget.pelanggan.nama}
+
+🕒 Waktu : 
+${DateFormat('dd MMM yyyy • HH:mm').format(DateTime.now())}
+
+📍 Lokasi :
+${latitude ?? '-'}, ${longitude ?? '-'}
+
+👤 Sales ID : ${idSales ?? '-'}
+
+🧑 SPV : ${idSpv ?? '-'}
+
+📝 Catatan :
+${catatan.isEmpty ? '(tidak ada)' : catatan}
+</pre>
+━━━━━━━━━━━━━━━━━━
+📍 <a href="https://www.google.com/maps?q=${latitude ?? ''},${longitude ?? ''}"><b>Cek Lokasi</b></a>
+━━━━━━━━━━━━━━━━━━
+📸 <a href="${ServerConfig.baseUrl}/photo/$visitId"><b>Cek Foto</b></a>
+━━━━━━━━━━━━━━━━━━
+""";
+
+      await _sendTelegramLog(logMessage, topicId: topicId);
+      // =============================================================
+
+      // Kembali ke halaman pelanggan
       final isCustom = widget.featureType.toLowerCase() == 'custom';
       final screen = isCustom
           ? PelangganListCustomScreen(
@@ -386,6 +463,43 @@ class _DetailFeatureChecklistScreenState
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Gagal menyimpan checklist: $e')),
       );
+
+      // =============== ⚠️ LOG GAGAL KE TELEGRAM ==================
+      final errorLog = """
+<b>❌ TRANSAKSI GAGAL</b>
+
+<pre>
+📋 Fitur :
+${widget.featureId}
+
+🆔 ID Visit :
+$visitId
+
+🏪 Pelanggan :
+${widget.pelanggan.nama}
+
+🕒 Waktu : 
+${DateFormat('dd MMM yyyy • HH:mm').format(DateTime.now())}
+
+📍 Lokasi :
+${latitude ?? '-'}, ${longitude ?? '-'}
+
+👤 Sales ID : ${idSales ?? '-'}
+
+🧑 SPV : ${idSpv ?? '-'}
+
+💬 Error :
+${e.toString()}
+</pre>
+━━━━━━━━━━━━━━━━━━
+📍 <a href="https://www.google.com/maps?q=${latitude ?? ''},${longitude ?? ''}"><b>Cek Lokasi</b></a>
+━━━━━━━━━━━━━━━━━━
+📸 <a href="${ServerConfig.baseUrl}/photo/$visitId"><b>Cek Foto</b></a>
+━━━━━━━━━━━━━━━━━━
+""";
+
+      await _sendTelegramLog(errorLog, topicId: topicId);
+      // ============================================================
     }
   }
 
@@ -697,6 +811,22 @@ class _DetailFeatureChecklistScreenState
                 height: 52, child: Center(child: CircularProgressIndicator()))
             : ElevatedButton.icon(
                 onPressed: () async {
+                  // ✅ Validasi: pastikan ada minimal satu checklist yang dicentang
+                  final hasChecked = _details.any(
+                    (detail) => detail.subDetails.any((sub) => sub.isChecked),
+                  );
+
+                  if (!hasChecked) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content:
+                            Text('Anda belum mencentang checklist apa pun!'),
+                        backgroundColor: Colors.orange,
+                      ),
+                    );
+                    return; // hentikan proses submit
+                  }
+
                   // ambil foto
                   await _ambilFoto();
                   if (_fotoFile == null) {
@@ -1003,6 +1133,135 @@ class _HistoryCardState extends State<_HistoryCard> {
               ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ===============================================================
+// WIDGET: CustomCameraScreen — kamera depan & zoom terkunci
+// ===============================================================
+class CustomCameraScreen extends StatefulWidget {
+  final String visitId;
+  const CustomCameraScreen({Key? key, required this.visitId}) : super(key: key);
+
+  @override
+  State<CustomCameraScreen> createState() => _CustomCameraScreenState();
+}
+
+class _CustomCameraScreenState extends State<CustomCameraScreen> {
+  CameraController? _controller;
+  List<CameraDescription>? _cameras;
+  bool _isInitialized = false;
+  bool _isTakingPhoto = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _initCamera();
+  }
+
+  Future<void> _initCamera() async {
+    _cameras = await availableCameras();
+    final frontCamera = _cameras!.firstWhere(
+      (camera) => camera.lensDirection == CameraLensDirection.front,
+    );
+
+    _controller = CameraController(
+      frontCamera,
+      ResolutionPreset.medium,
+      enableAudio: false,
+    );
+
+    await _controller!.initialize();
+
+    // 🔒 Lock zoom ke 1x
+    await _controller!.setZoomLevel(1.0);
+
+    if (mounted) {
+      setState(() => _isInitialized = true);
+    }
+  }
+
+  Future<void> _takePhoto() async {
+    if (!_controller!.value.isInitialized || _isTakingPhoto)
+      return; // ✅ cegah dobel tap
+    setState(() => _isTakingPhoto = true); // ✅ kunci tombol
+
+    try {
+      // Ambil foto → hasil berupa XFile
+      final XFile photo = await _controller!.takePicture();
+
+      // Pindahkan ke direktori sementara dengan nama sesuai visitId
+      final Directory tempDir = await getTemporaryDirectory();
+      final String filePath = '${tempDir.path}/${widget.visitId}.jpg';
+      final File savedFile = await File(photo.path).copy(filePath);
+
+      Navigator.pop(context, savedFile); // kirim hasil ke parent
+    } catch (e) {
+      debugPrint("❌ Gagal mengambil foto: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Gagal mengambil foto: $e")),
+        );
+      }
+      setState(() => _isTakingPhoto = false);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_isInitialized) {
+      return const Scaffold(
+        backgroundColor: Colors.black,
+        body: Center(child: CircularProgressIndicator(color: Colors.white)),
+      );
+    }
+
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(
+        alignment: Alignment.bottomCenter,
+        children: [
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final size = constraints.biggest;
+              final scale =
+                  1 / (_controller!.value.aspectRatio * size.aspectRatio);
+
+              return Transform.scale(
+                scale: scale,
+                alignment: Alignment.center,
+                child: CameraPreview(_controller!),
+              );
+            },
+          ),
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 24),
+              child: GestureDetector(
+                onTap: _isTakingPhoto ? null : _takePhoto,
+                child: Container(
+                  width: 80,
+                  height: 80,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.white.withOpacity(0.9),
+                    border: Border.all(color: Colors.white, width: 4),
+                  ),
+                  child: const Icon(Icons.camera_alt,
+                      size: 40, color: Colors.black),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

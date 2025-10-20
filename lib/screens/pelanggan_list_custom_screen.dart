@@ -761,7 +761,39 @@ class _PelangganListCustomScreenState extends State<PelangganListCustomScreen> {
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
                   child: ElevatedButton.icon(
-                    onPressed: isLoading ? null : submitSemuaData,
+                    onPressed: isLoading
+                        ? null
+                        : () async {
+                            final konfirmasi = await showDialog<bool>(
+                              context: context,
+                              builder: (ctx) => AlertDialog(
+                                title: const Text('Konfirmasi Upload'),
+                                content: const Text(
+                                  'Apakah Anda yakin ingin mengirim semua data kunjungan yang sudah selesai?',
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () =>
+                                        Navigator.of(ctx).pop(false),
+                                    child: const Text('Batal'),
+                                  ),
+                                  ElevatedButton(
+                                    onPressed: () =>
+                                        Navigator.of(ctx).pop(true),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: _UX.success,
+                                      foregroundColor: Colors.white,
+                                    ),
+                                    child: const Text('Ya, Upload Sekarang'),
+                                  ),
+                                ],
+                              ),
+                            );
+
+                            if (konfirmasi == true) {
+                              await submitSemuaData();
+                            }
+                          },
                     icon: const Icon(Icons.cloud_upload),
                     label: const Text('Selesai & Upload Semua'),
                     style: ElevatedButton.styleFrom(
