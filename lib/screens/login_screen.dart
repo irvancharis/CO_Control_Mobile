@@ -21,6 +21,7 @@ class _LoginScreenState extends State<LoginScreen>
 
   bool _loading = false;
   bool _obscure = true;
+  String _serverIp = 'Memuat IP...'; // <--- Variabel untuk menampung IP
 
   // Palet
   static const Color _bgTop = Color(0xFF4B2E83);
@@ -32,7 +33,17 @@ class _LoginScreenState extends State<LoginScreen>
     _gradCtrl = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 4),
-    )..repeat(); // muter terus buat animasi gradient
+    )..repeat();
+
+    _loadServerIp(); // <--- Panggil fungsi load IP saat init
+  }
+
+  // <--- Fungsi untuk mengambil IP dari Memory
+  Future<void> _loadServerIp() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _serverIp = prefs.getString('server_ip') ?? 'Belum diset';
+    });
   }
 
   @override
@@ -46,6 +57,8 @@ class _LoginScreenState extends State<LoginScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      // Agar keyboard tidak menutupi form, tapi background tetap full
+      resizeToAvoidBottomInset: false,
       body: Stack(
         children: [
           // BG gradient
@@ -69,14 +82,29 @@ class _LoginScreenState extends State<LoginScreen>
             right: -90,
             child: _Blob(width: 240, height: 240, opacity: .05),
           ),
-          // Konten
+
+          // Konten Form
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const SizedBox(height: 226),
+                  const SizedBox(height: 180), // Sedikit dinaikkan
+                  const Text(
+                    "Welcome Back,",
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    "Sign in to continue",
+                    style: TextStyle(color: Colors.white54, fontSize: 14),
+                  ),
+                  const SizedBox(height: 40),
+
                   Expanded(
                     child: SingleChildScrollView(
                       child: Form(
@@ -105,9 +133,9 @@ class _LoginScreenState extends State<LoginScreen>
                                   ? 'Masukkan password'
                                   : null,
                             ),
-                            const SizedBox(height: 22),
+                            const SizedBox(height: 30),
 
-                            // Tombol dengan animasi gradient
+                            // Tombol Login
                             SizedBox(
                               width: double.infinity,
                               height: 50,
@@ -133,11 +161,10 @@ class _LoginScreenState extends State<LoginScreen>
                                       decoration: BoxDecoration(
                                         gradient: LinearGradient(
                                           colors: const [
-                                            Color(0xFF7C4DFF), // ungu
+                                            Color(0xFF7C4DFF),
                                             Color(0xFF895BFF),
                                             Color(0xFF7C4DFF),
                                           ],
-                                          // Rotasi pelan supaya terlihat hidup
                                           transform: GradientRotation(
                                             _gradCtrl.value * 2 * math.pi,
                                           ),
@@ -171,7 +198,6 @@ class _LoginScreenState extends State<LoginScreen>
                                 ),
                               ),
                             ),
-
                             const SizedBox(height: 16),
                           ],
                         ),
@@ -179,6 +205,46 @@ class _LoginScreenState extends State<LoginScreen>
                     ),
                   ),
                 ],
+              ),
+            ),
+          ),
+
+          // --- TAMPILAN INFO SERVER (BARU) ---
+          Positioned(
+            bottom: 20,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: GestureDetector(
+                // Jika diklik, kembali ke halaman setup IP
+                onTap: () {
+                  Navigator.of(context).pushNamed('/ip-setup');
+                },
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: Colors.white24)),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.dns_rounded,
+                          color: Colors.white54, size: 14),
+                      const SizedBox(width: 6),
+                      Text(
+                        "Server: $_serverIp",
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 12,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      const Icon(Icons.edit, color: Colors.white30, size: 12),
+                    ],
+                  ),
+                ),
               ),
             ),
           ),
@@ -191,17 +257,18 @@ class _LoginScreenState extends State<LoginScreen>
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _loading = true);
+    // Gunakan widget.key atau provider jika perlu passing IP,
+    // tapi biasanya AuthService sudah pakai ApiConfig global.
     final success = await AuthService()
         .login(_usernameCtrl.text.trim(), _passwordCtrl.text.trim());
+
     if (!mounted) return;
     setState(() => _loading = false);
 
     if (success) {
       final prefs = await SharedPreferences.getInstance();
-      // ignore: avoid_print
-      print("✅ Login sukses. ID SPV: ${prefs.getString('user_id')}");
+      // print("✅ Login sukses. ID SPV: ${prefs.getString('user_id')}");
 
-      // Transisi Fade + Slide ke Dashboard
       Navigator.of(context).pushReplacement(
         PageRouteBuilder(
           transitionDuration: const Duration(milliseconds: 600),

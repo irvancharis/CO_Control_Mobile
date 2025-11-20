@@ -20,6 +20,7 @@ import '../services/database_helper.dart';
 import '../services/submit_visit_service.dart';
 import 'pelanggan_list_screen.dart';
 import 'pelanggan_list_custom_screen.dart';
+import '../utils/api_config.dart';
 
 class _UX {
   static const primary = Color(0xFF8E7CC3);
@@ -142,9 +143,12 @@ class _DetailFeatureChecklistScreenState
 
       if (result == null) return;
 
-      // Kompres hasil foto sebelum simpan/upload (opsional)
+      // Kompres hasil foto sebelum simpan/upload
       final Directory dir = await getTemporaryDirectory();
       final String targetPath = "${dir.path}/compressed_$visitId.jpg";
+
+      // Pastikan file asli ada sebelum kompres
+      if (!await result.exists()) return;
 
       final XFile? compressedXFile =
           await FlutterImageCompress.compressAndGetFile(
@@ -157,8 +161,7 @@ class _DetailFeatureChecklistScreenState
         _fotoFile = File(compressedXFile?.path ?? result.path);
       });
 
-      debugPrint(
-          "✅ Foto berhasil diambil dari kamera depan: ${_fotoFile!.path}");
+      debugPrint("✅ Foto berhasil diambil & dikompres: ${_fotoFile!.path}");
     } catch (e) {
       debugPrint('Error ambil foto: $e');
       if (!mounted) return;
@@ -171,14 +174,16 @@ class _DetailFeatureChecklistScreenState
   // ==================== FOTO: upload ke server ====================
   Future<String?> _uploadFoto(File foto) async {
     try {
-      final Uri uri = Uri.parse("${ServerConfig.baseUrl}/upload-selfie");
+      // --- PERBAIKAN DI SINI ---
+      final Uri uri = Uri.parse(ApiConfig.getUrl('/upload-selfie'));
+      print("Proses Upload ke: $uri"); // Debugging
 
       final request = http.MultipartRequest("POST", uri)
         ..files.add(
           await http.MultipartFile.fromPath(
             "selfie",
             foto.path,
-            filename: "$visitId.jpg", // <- jadikan nama file sesuai id_visit
+            filename: "$visitId.jpg", // Menggunakan ID Visit sebagai nama file
           ),
         );
 
@@ -186,14 +191,14 @@ class _DetailFeatureChecklistScreenState
       final respStr = await response.stream.bytesToString();
 
       if (response.statusCode == 200) {
-        // karena kita sudah tentukan nama file, langsung return saja
+        print("✅ Upload Berhasil: $visitId.jpg");
         return "$visitId.jpg";
       } else {
-        debugPrint("Upload gagal: ${response.statusCode} - $respStr");
+        debugPrint("❌ Upload gagal: ${response.statusCode} - $respStr");
         return null;
       }
     } catch (e) {
-      debugPrint("Error upload foto: $e");
+      debugPrint("❌ Error upload foto: $e");
       return null;
     }
   }
@@ -431,7 +436,7 @@ ${catatan.isEmpty ? '(tidak ada)' : catatan}
 ━━━━━━━━━━━━━━━━━━
 📍 <a href="https://www.google.com/maps?q=${latitude ?? ''},${longitude ?? ''}"><b>Cek Lokasi</b></a>
 ━━━━━━━━━━━━━━━━━━
-📸 <a href="${ServerConfig.baseUrl}/photo/$visitId"><b>Cek Foto</b></a>
+📸 <a href="${ApiConfig.getUrl}/photo/$visitId"><b>Cek Foto</b></a>
 ━━━━━━━━━━━━━━━━━━
 """;
 
@@ -494,7 +499,7 @@ ${e.toString()}
 ━━━━━━━━━━━━━━━━━━
 📍 <a href="https://www.google.com/maps?q=${latitude ?? ''},${longitude ?? ''}"><b>Cek Lokasi</b></a>
 ━━━━━━━━━━━━━━━━━━
-📸 <a href="${ServerConfig.baseUrl}/photo/$visitId"><b>Cek Foto</b></a>
+📸 <a href="${ApiConfig.getUrl}/photo/$visitId"><b>Cek Foto</b></a>
 ━━━━━━━━━━━━━━━━━━
 """;
 
@@ -507,7 +512,7 @@ ${e.toString()}
   Future<void> _fetchHistorySelling() async {
     final idPelanggan = widget.pelanggan.id;
     final url =
-        Uri.parse("${ServerConfig.baseUrl}/DATAHISTORYSELLING/$idPelanggan");
+        Uri.parse("${ApiConfig.getUrl}/DATAHISTORYSELLING/$idPelanggan");
 
     try {
       final response = await http.get(url);
@@ -593,7 +598,7 @@ ${e.toString()}
         DateFormat("yyyy-MM-dd").format(DateTime.parse(tanggal).toLocal());
 
     final url = Uri.parse(
-        "${ServerConfig.baseUrl}/DETAILHISTORYSELLING/$idSales/$tgl/$idPelanggan");
+        "${ApiConfig.getUrl}/DETAILHISTORYSELLING/$idSales/$tgl/$idPelanggan");
 
     final response = await http.get(url);
     if (response.statusCode == 200) {

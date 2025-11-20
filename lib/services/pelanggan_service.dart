@@ -2,13 +2,16 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../models/pelanggan_model.dart';
 import 'database_helper.dart';
-import '../config/server.dart';
+// import '../config/server.dart'; // Hapus jika tidak dipakai
+import '../utils/api_config.dart';
 
 class PelangganService {
-  final String baseUrl = ServerConfig.baseUrl;
-
   Future<void> downloadAndSavePelanggan(String nocall, String fitur) async {
-    final url = Uri.parse('$baseUrl/JOINT_CALL_DETAIL/$nocall');
+    // --- PERBAIKAN: Panggil fungsi getUrl ---
+    final String fullUrl = ApiConfig.getUrl('/JOINT_CALL_DETAIL/$nocall');
+    print("GET Pelanggan: $fullUrl"); // Debugging
+
+    final url = Uri.parse(fullUrl);
     final res = await http.get(url);
 
     if (res.statusCode == 200) {
@@ -20,15 +23,21 @@ class PelangganService {
           final pelanggan = Pelanggan.fromJson(pelangganJson);
           await DatabaseHelper.instance.insertOrReplacePelanggan(pelanggan);
         }
+        print("✅ Berhasil simpan ${data.length} pelanggan (JOINT)");
       }
     } else {
+      print("❌ Gagal download pelanggan: ${res.statusCode}");
       throw Exception('Gagal download pelanggan');
     }
   }
 
   Future<void> downloadAndSavePelangganCustom(
       String nocall, String fitur) async {
-    final url = Uri.parse('$baseUrl/CONTROL_CALL_DETAIL/$nocall');
+    // --- PERBAIKAN: Panggil fungsi getUrl ---
+    final String fullUrl = ApiConfig.getUrl('/CONTROL_CALL_DETAIL/$nocall');
+    print("GET Pelanggan Custom: $fullUrl"); // Debugging
+
+    final url = Uri.parse(fullUrl);
     final res = await http.get(url);
 
     if (res.statusCode == 200) {
@@ -40,8 +49,10 @@ class PelangganService {
           final pelanggan = Pelanggan.fromJson(pelangganJson);
           await DatabaseHelper.instance.insertOrReplacePelanggan(pelanggan);
         }
+        print("✅ Berhasil simpan ${data.length} pelanggan (CONTROL)");
       }
     } else {
+      print("❌ Gagal download pelanggan custom: ${res.statusCode}");
       throw Exception('Gagal download pelanggan');
     }
   }

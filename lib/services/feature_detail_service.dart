@@ -1,23 +1,32 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import '../models/feature_detail_model.dart'; // path model detail saja
-import '../services/database_helper.dart';
 import 'package:sqflite/sqflite.dart';
 
+import '../models/feature_detail_model.dart';
+import '../services/database_helper.dart';
+import '../utils/api_config.dart'; // Pastikan import ini ada
+
 class FeatureDetailService {
-  final String baseUrl;
+  // Hapus variable baseUrl, karena sekarang kita pakai ApiConfig
   final DatabaseHelper db;
 
-  FeatureDetailService({required this.baseUrl, required this.db});
+  // Constructor disederhanakan (hapus required this.baseUrl)
+  FeatureDetailService({required this.db});
 
   // Fetch all details from API
   Future<List<FeatureDetail>> fetchFeatureDetailsFromApi() async {
-    final response = await http.get(Uri.parse('$baseUrl/DETAIL_FEATURE'));
+    // --- PERBAIKAN UTAMA DI SINI ---
+    final String fullUrl = ApiConfig.getUrl('/DETAIL_FEATURE');
+    print("GET Feature Detail: $fullUrl"); // Debugging
+
+    final response = await http.get(Uri.parse(fullUrl));
+
     if (response.statusCode == 200) {
       final List data = jsonDecode(response.body);
       // PENTING: mapping tanpa subdetails, dari model detail saja
       return data.map((e) => FeatureDetail.fromJson(e)).toList();
     } else {
+      print("❌ Gagal ambil Feature Detail: ${response.statusCode}");
       throw Exception('Failed to load feature details');
     }
   }

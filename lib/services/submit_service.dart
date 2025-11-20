@@ -1,7 +1,8 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../models/feature_detail_model.dart';
-import '../config/server.dart';
+// import '../config/server.dart'; // Hapus ini karena sudah pakai api_config
+import '../utils/api_config.dart';
 
 class SubmitService {
   static Future<bool> submitVisit({
@@ -49,15 +50,19 @@ class SubmitService {
         }).toList(),
       };
 
+      // --- PERBAIKAN UTAMA DI SINI ---
+      final String fullUrl = ApiConfig.getUrl('/SUBMIT_VISIT');
+      print('[SUBMIT] Sending to: $fullUrl'); // Debugging URL
+
       // Kirim ke server
       final response = await http.post(
-        Uri.parse('${ServerConfig.baseUrl}/SUBMIT_VISIT'),
+        Uri.parse(fullUrl), // Gunakan URL hasil generate
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode(data),
       );
 
       print('DEBUG SUBMIT PAYLOAD');
-      print(jsonEncode(data));
+      // print(jsonEncode(data)); // Boleh di-comment kalau log terlalu panjang
 
       print('[SUBMIT VISIT] Status: ${response.statusCode}');
       print('[SUBMIT VISIT] Body: ${response.body}');

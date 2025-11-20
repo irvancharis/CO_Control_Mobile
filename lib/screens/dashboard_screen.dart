@@ -12,6 +12,7 @@ import '../services/sync_service.dart';
 import '../config/server.dart';
 import 'pelanggan_list_screen.dart';
 import 'pelanggan_list_custom_screen.dart';
+import '../utils/api_config.dart';
 
 // ===================== Tokens (selaras layar lain) =====================
 class _UX {
@@ -154,7 +155,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
       final fileBytes = await dbFile.readAsBytes();
 
-      final url = Uri.parse('${ServerConfig.baseUrl}/upload-db');
+      final url = Uri.parse('${ApiConfig.getUrl}/upload-db');
       final request = http.MultipartRequest('POST', url)
         ..files.add(http.MultipartFile.fromBytes('file', fileBytes,
             filename: fileName));
@@ -235,37 +236,43 @@ class _DashboardScreenState extends State<DashboardScreen> {
         return false;
       },
       child: Scaffold(
-        backgroundColor: _UX.bg,
-        appBar: AppBar(
-          elevation: 0,
-          backgroundColor: _UX.surface,
-          foregroundColor: Colors.black87,
-          title: const Text('Dashboard',
-              style: TextStyle(fontWeight: FontWeight.w700)),
-          actions: [
-            // Export DB
-            IconButton(
-              tooltip: 'Export Database (Upload ke server)',
-              onPressed: _exporting ? null : _exportDatabase,
-              icon: _exporting
-                  ? const SizedBox(
-                      width: 22,
-                      height: 22,
-                      child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Icon(Icons.file_upload),
+        appBar: PreferredSize(
+          preferredSize:
+              const Size.fromHeight(70), // tinggi AppBar (default 56)
+          child: Padding(
+            padding: const EdgeInsets.only(top: 30), // jarak dari atas
+            child: AppBar(
+              automaticallyImplyLeading: false,
+              elevation: 0,
+              foregroundColor: Colors.black87,
+              title: const Text(
+                'Dashboard',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              actions: [
+                IconButton(
+                  tooltip: 'Export Database (Upload ke server)',
+                  onPressed: _exporting ? null : _exportDatabase,
+                  icon: _exporting
+                      ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.file_upload),
+                ),
+                IconButton(
+                  tooltip: 'Sync Data Master (Server → Lokal)',
+                  onPressed: _syncing ? null : _doSync,
+                  icon: _syncing
+                      ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.sync),
+                ),
+              ],
             ),
-            // Sync
-            IconButton(
-              tooltip: 'Sync Data Master (Server → Lokal)',
-              onPressed: _syncing ? null : _doSync,
-              icon: _syncing
-                  ? const SizedBox(
-                      width: 22,
-                      height: 22,
-                      child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Icon(Icons.sync),
-            ),
-          ],
+          ),
         ),
         body: FutureBuilder<List<Feature>>(
           future: _futureFeatures,
@@ -393,6 +400,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
             );
           },
+        ),
+        bottomNavigationBar: Padding(
+          padding: const EdgeInsets.only(bottom: 12, top: 4),
+          child: Column(
+            mainAxisSize: MainAxisSize
+                .min, // penting agar tidak mengambil seluruh tinggi layar
+            children: const [
+              Divider(thickness: 0.4, color: Color(0xFFE1E1E8)),
+              SizedBox(height: 6),
+              Text(
+                'Versi 1.0.0',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: _UX.textMuted,
+                  fontSize: 12,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+              SizedBox(height: 6),
+            ],
+          ),
         ),
       ),
     );

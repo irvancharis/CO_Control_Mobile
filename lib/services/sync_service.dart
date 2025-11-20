@@ -6,25 +6,31 @@ import '../models/sales_model.dart';
 import '../models/feature_model.dart';
 import '../models/feature_detail_model.dart';
 import '../models/feature_subdetail_model.dart';
-import '../config/server.dart';
+// import '../config/server.dart'; // Hapus jika tidak dipakai, karena sudah pakai api_config
+import '../utils/api_config.dart';
 
 class SyncService {
   static Future<void> syncAll() async {
     final db = DatabaseHelper.instance;
-    final baseUrl = ServerConfig.baseUrl;
+
+    print("--- MULAI SYNC DATA ---");
 
     // 1. SALES
-    final salesRes = await http.get(Uri.parse('$baseUrl/DATASALES'));
-    print("SALES RESPONSE: ${salesRes.statusCode} ${salesRes.body}");
+    // PERBAIKAN: Panggil fungsi getUrl(...)
+    final String salesUrl = ApiConfig.getUrl('/DATASALES');
+    final salesRes = await http.get(Uri.parse(salesUrl));
+
+    print("SALES RESPONSE: ${salesRes.statusCode} dari $salesUrl");
     if (salesRes.statusCode == 200) {
       final List data = jsonDecode(salesRes.body);
       await db.clearTable('sales');
       for (final json in data) {
-        print("INSERT SALES: $json");
+        // print("INSERT SALES: $json"); // Print dimatikan biar log gak penuh
         await db.insertSales(Sales.fromJson(json));
       }
+      print("✅ Sales tersimpan: ${data.length} data");
     } else {
-      print("Failed to get SALES");
+      print("❌ Failed to get SALES");
     }
 
     // 2. Clear feature tables before sync
@@ -33,51 +39,57 @@ class SyncService {
     await db.clearTable('feature_subdetail');
 
     // 3. FEATURE
-    final featureRes = await http.get(Uri.parse('$baseUrl/FEATURE'));
-    print("FEATURE RESPONSE: ${featureRes.statusCode} ${featureRes.body}");
+    // PERBAIKAN: Panggil fungsi getUrl(...)
+    final String featureUrl = ApiConfig.getUrl('/FEATURE');
+    final featureRes = await http.get(Uri.parse(featureUrl));
+
+    print("FEATURE RESPONSE: ${featureRes.statusCode} dari $featureUrl");
     if (featureRes.statusCode == 200) {
       final List featureList = jsonDecode(featureRes.body);
       for (final featJson in featureList) {
-        print("INSERT FEATURE: $featJson");
         await db.insertFeature(Feature.fromJson(featJson));
       }
+      print("✅ Feature tersimpan: ${featureList.length} data");
     } else {
-      print("Failed to get FEATURE");
+      print("❌ Failed to get FEATURE");
     }
 
-    // 4. DETAIL_FEATURE → Parse dan masukkan semua sekaligus
-    final detailRes = await http.get(Uri.parse('$baseUrl/DETAIL_FEATURE'));
-    print("DETAIL RESPONSE: ${detailRes.statusCode} ${detailRes.body}");
+    // 4. DETAIL_FEATURE
+    // PERBAIKAN: Panggil fungsi getUrl(...)
+    final String detailUrl = ApiConfig.getUrl('/DETAIL_FEATURE');
+    final detailRes = await http.get(Uri.parse(detailUrl));
+
+    print("DETAIL RESPONSE: ${detailRes.statusCode} dari $detailUrl");
     if (detailRes.statusCode == 200) {
       final List detailList = jsonDecode(detailRes.body);
 
       final List<FeatureDetail> parsedDetails =
           detailList.map((json) => FeatureDetail.fromJson(json)).toList();
 
-      print("Jumlah FeatureDetail ter-parse: ${parsedDetails.length}");
-
       await db.insertAllFeatureDetails(parsedDetails); // batch insert
+      print("✅ Feature Details tersimpan: ${parsedDetails.length} data");
     } else {
-      print("Failed to get DETAIL_FEATURE");
+      print("❌ Failed to get DETAIL_FEATURE");
     }
 
     // 5. SUBDETAIL_FEATURE
-    final subDetailRes =
-        await http.get(Uri.parse('$baseUrl/SUBDETAIL_FEATURE'));
-    print(
-        "SUBDETAIL RESPONSE: ${subDetailRes.statusCode} ${subDetailRes.body}");
+    // PERBAIKAN: Panggil fungsi getUrl(...)
+    final String subDetailUrl = ApiConfig.getUrl('/SUBDETAIL_FEATURE');
+    final subDetailRes = await http.get(Uri.parse(subDetailUrl));
+
+    print("SUBDETAIL RESPONSE: ${subDetailRes.statusCode} dari $subDetailUrl");
     if (subDetailRes.statusCode == 200) {
       final List subDetailList = jsonDecode(subDetailRes.body);
       for (final subJson in subDetailList) {
-        print("INSERT FEATURE SUBDETAIL: $subJson");
         await db.insertFeatureSubDetail(FeatureSubDetail.fromJson(subJson));
       }
+      print("✅ SubDetail tersimpan: ${subDetailList.length} data");
     } else {
-      print("Failed to get SUBDETAIL_FEATURE");
+      print("❌ Failed to get SUBDETAIL_FEATURE");
     }
 
     // 6. Optionally: print jumlah data
     final allFeatures = await db.getAllFeature();
-    print('Jumlah feature setelah sync: ${allFeatures.length}');
+    print('--- SYNC SELESAI. Total Feature: ${allFeatures.length} ---');
   }
 }
