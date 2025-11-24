@@ -511,8 +511,7 @@ ${e.toString()}
   // ==================== HISTORY SELLING ====================
   Future<void> _fetchHistorySelling() async {
     final idPelanggan = widget.pelanggan.id;
-    final url =
-        Uri.parse("${ApiConfig.getUrl}/DATAHISTORYSELLING/$idPelanggan");
+    final url = Uri.parse(ApiConfig.getUrl('/DATAHISTORYSELLING/$idPelanggan'));
 
     try {
       final response = await http.get(url);
@@ -598,7 +597,7 @@ ${e.toString()}
         DateFormat("yyyy-MM-dd").format(DateTime.parse(tanggal).toLocal());
 
     final url = Uri.parse(
-        "${ApiConfig.getUrl}/DETAILHISTORYSELLING/$idSales/$tgl/$idPelanggan");
+        ApiConfig.getUrl('/DETAILHISTORYSELLING/$idSales/$tgl/$idPelanggan'));
 
     final response = await http.get(url);
     if (response.statusCode == 200) {

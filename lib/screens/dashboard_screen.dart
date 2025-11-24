@@ -52,6 +52,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
     super.initState();
     _futureFeatures = _loadFeaturesFiltered();
     _loadUsername();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await Future.delayed(const Duration(seconds: 2));
+
+      if (mounted) {
+        _doSync();
+      }
+    });
   }
 
   Future<void> _loadUsername() async {
@@ -113,24 +121,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   // ========================= SYNC =========================
   Future<void> _doSync() async {
-    setState(() => _syncing = true);
+    // JANGAN set _syncing = true di sini agar UI tidak loading full screen
+    // setState(() => _syncing = true); <--- HAPUS ATAU KOMENTAR INI
+
     try {
+      // Tampilkan indikator loading kecil di bawah/snack bar saja jika perlu
       await SyncService.syncAll();
+
       if (!mounted) return;
+      // Refresh data setelah sync selesai
       setState(() {
         _futureFeatures = _loadFeaturesFiltered();
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Sync selesai!')),
-      );
     } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Sync gagal: $e')),
-      );
-    } finally {
-      if (mounted) setState(() => _syncing = false);
+      // Error handling silent atau snackbar
+      debugPrint('Auto sync error: $e');
     }
+    // finally block juga bisa dihapus
   }
 
   // ========================= EXPORT DB =========================
@@ -150,12 +157,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
       final prefs = await SharedPreferences.getInstance();
       final kodeUser = prefs.getString('user_id') ?? '';
-      final tanggalStr = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+      final tanggalStr =
+          DateFormat('dd/MM/yyyy HH:mm:ss').format(DateTime.now());
       final fileName = '${kodeUser}_$tanggalStr.db';
 
       final fileBytes = await dbFile.readAsBytes();
 
-      final url = Uri.parse('${ApiConfig.getUrl}/upload-db');
+      final url = Uri.parse(ApiConfig.getUrl('/upload-db'));
       final request = http.MultipartRequest('POST', url)
         ..files.add(http.MultipartFile.fromBytes('file', fileBytes,
             filename: fileName));
@@ -277,8 +285,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         body: FutureBuilder<List<Feature>>(
           future: _futureFeatures,
           builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting ||
-                _syncing) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator());
             }
             if (snapshot.hasError) {
