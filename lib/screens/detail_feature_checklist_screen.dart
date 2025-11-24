@@ -95,6 +95,77 @@ class _DetailFeatureChecklistScreenState
     super.dispose();
   }
 
+  Future<void> _updateKoordinatPelanggan() async {
+    // 1. Pastikan lokasi sales sudah didapatkan
+    if (latitude == null || longitude == null) {
+      await getCurrentLocation();
+      if (latitude == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('Gagal mendapatkan lokasi terkini Anda.')),
+        );
+        return;
+      }
+    }
+
+    // 2. Konfirmasi User
+    final bool? confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Update Lokasi Toko?'),
+        content: Text(
+            'Lokasi toko akan diperbarui sesuai posisi Anda saat ini:\n\nLat: $latitude\nLong: $longitude'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Batal')),
+          ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Update')),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    // 3. Eksekusi API Update
+    // ⚠️ GANTI endpoint '/update-location' sesuai endpoint backend Anda
+    final url = Uri.parse(ApiConfig.getUrl('/update-location'));
+
+    try {
+      setState(() => isSubmitting = true); // Pakai loading state yg ada
+
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'id_pelanggan': widget.pelanggan.id,
+          'latitude': latitude,
+          'longitude': longitude,
+          'updated_by': idSales // atau idSpv
+        }),
+      );
+
+      setState(() => isSubmitting = false);
+
+      if (response.statusCode == 200) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Koordinat Toko Berhasil Diupdate!'),
+            backgroundColor: _UX.success,
+          ),
+        );
+      } else {
+        throw Exception('Gagal update: ${response.body}');
+      }
+    } catch (e) {
+      setState(() => isSubmitting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e'), backgroundColor: _UX.danger),
+      );
+    }
+  }
+
   Future<void> _sendTelegramLog(String message, {int? topicId}) async {
     final String botToken = ServerConfig.telegramBotToken;
     final String chatId = ServerConfig.telegramChatId;
@@ -659,6 +730,20 @@ ${e.toString()}
                   ],
                 ),
               ),
+
+              InkWell(
+                borderRadius: BorderRadius.circular(30),
+                onTap:
+                    _updateKoordinatPelanggan, // Panggil fungsi yang baru dibuat
+                child: CircleAvatar(
+                  radius: 20,
+                  backgroundColor: Colors.orange.withOpacity(0.15),
+                  child: const Icon(Icons.edit_location_alt,
+                      color: Colors.orange, size: 20),
+                ),
+              ),
+              const SizedBox(width: 8), // Jarak antar tombol
+
               InkWell(
                 borderRadius: BorderRadius.circular(30),
                 onTap: () async {
